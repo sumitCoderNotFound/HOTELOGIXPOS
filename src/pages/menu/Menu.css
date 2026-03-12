@@ -45,7 +45,7 @@
 /* ── Toggle button on sidebar edge ── */
 .lsb__toggle {
   position: absolute; top: 16px; right: 3px;
-  width: 26px; height: 26px;  
+  width: 26px; height: 26px;
   background: #1565C0; border: 2px solid rgba(255,255,255,0.35);
   border-radius: 50%; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -177,6 +177,7 @@
   .topbar { flex-direction: row; align-items: center; height: 58px; padding: 0; }
   .tb-main-row { flex: 1; height: 58px; }
   .tb-mobile-search { display: none !important; }
+  .tb-logo-inline { display: block; height: 22px; width: auto; flex-shrink: 0; object-fit: contain; }
 }
 
 .tb-outlet {
