@@ -146,9 +146,12 @@ const SBIcons = {
   Profile: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>,
   Support: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
   Refresh: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
+  Star:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>,
+  Offer:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
+  Fire:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M12 12c2-2.96 0-7-1-8 0 3.04-4 6.5-4 8 0 2.97 2.24 5 5 5s5-2.03 5-5c0-1.06-.5-2-1-3-1 1-3 2-4 3z"/></svg>,
 };
 
-function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle, currency }) {
+function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle, currency, onSortOffers }) {
   const location  = useLocation();
   const guestName = userData?.guestName || userData?.guest?.guest_name || userData?.name || 'Guest';
   const room      = userData?.guest?.guestRoomId || userData?.guest?.room || userData?.roomNumber || 'N/A';
@@ -169,18 +172,29 @@ function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle,
   const nav = [
     { label: t('browse_menu'),    path:'/menu',         icon: SBIcons.Menu,    section: 'MENU' },
     { label: t('my_cart'),        path:'/cart',          icon: SBIcons.Cart,    badge: cartCount||null },
-    { label: t('recommendations'),path:null,             icon: SBIcons.Track,   section: 'DISCOVER', action:'recommend' },
-    { label: t('order_history'),  path:'/history',       icon: SBIcons.Hist    },
+    { label: t('recommendations'),path:null,             icon: SBIcons.Star,    section: 'DISCOVER', action:'recommend' },
+    { label: 'Best Selling',      path:null,             icon: SBIcons.Fire,    action:'bestselling' },
+    { label: 'Best Offers',       path:null,             icon: SBIcons.Offer,   action:'bestoffers' },
+    { label: t('order_history'),  path:'/history',       icon: SBIcons.Hist,    section: 'ORDERS' },
     { label: t('my_profile'),     path:'PROFILE',        icon: SBIcons.Profile, section: 'ACCOUNT' },
     { label: t('support'),        path: null,            icon: SBIcons.Support },
   ];
 
   function handleNav(item) {
     if (item.path === 'PROFILE') { onProfile(); return; }
-    if (item.action === 'recommend') { 
-      // Scroll to recommendations section or reset filters to show mixed categories
+    if (item.action === 'recommend' || item.action === 'bestselling') { 
+      // Scroll to recommendations section
       const el = document.querySelector('.scroll-area');
-      if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+      if (el) {
+        const recsSection = el.querySelector('.section-hdr:last-of-type');
+        if (recsSection) recsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      }
+      return;
+    }
+    if (item.action === 'bestoffers') {
+      // Sort by discount/offers
+      if (onSortOffers) onSortOffers();
       return;
     }
     if (!item.path) { alert('Support: +91 98765 43210'); return; }
@@ -678,10 +692,11 @@ function MenuCard({ item, inCart, cartQty, onAdd, onOpen, onCustomize, onChangeQ
 
   const hasNutri = NUTRI.some(n => getNV(item,n) != null);
   const tags = (item.tags||[]).map(t=>t.toLowerCase());
-  const foodType = (item.food_type||item.dietary||item.type||'').toLowerCase();
-  const isVeg = tags.some(t=>t.includes('veg')&&!t.includes('non')) || foodType.includes('veg');
-  const isNonVeg = tags.some(t=>t.includes('non-veg')||t.includes('nonveg')) || foodType.includes('non');
+  const foodType = (item.food_type||item.diet_type||item.veg_nonveg||item.dietary||item.type||'').toLowerCase();
+  const isVeg = foodType === 'veg' || foodType === 'vegetarian' || tags.some(t=>(t.includes('veg')||t.includes('vegetarian'))&&!t.includes('non'));
+  const isNonVeg = foodType === 'nonveg' || foodType === 'non-veg' || foodType === 'non_veg' || tags.some(t=>t.includes('non-veg')||t.includes('nonveg'));
   const vegDotColor = isVeg ? '#22c55e' : isNonVeg ? '#ef4444' : null;
+  const vegLabel = isVeg ? 'Veg' : isNonVeg ? 'Non-Veg' : null;
 
   return (
     <div className={`mc ${inCart?'mc--in':''}`} onClick={() => onOpen(item)}>
@@ -690,7 +705,7 @@ function MenuCard({ item, inCart, cartQty, onAdd, onOpen, onCustomize, onChangeQ
         {item.is_bestseller && <div className="mc__ribbon mc__ribbon--star">⭐ Best</div>}
         {item.is_popular    && <div className="mc__ribbon mc__ribbon--hot">🔥 Hot</div>}
         {item.discount      && <div className="mc__ribbon mc__ribbon--off">{item.discount}% OFF</div>}
-        {item.tags?.some(tg=>tg.toLowerCase().includes('veg')) && <div className="mc__ribbon mc__ribbon--veg">Veg</div>}
+        {vegLabel && <div className={`mc__ribbon ${isVeg ? 'mc__ribbon--veg' : 'mc__ribbon--nonveg'}`}>{isVeg ? '🟢' : '🔴'} {vegLabel}</div>}
         {inCart && <span className="mc__qty-badge">{cartQty}</span>}
         {showFlash && <span className="mc__added-flash">✓</span>}
       </div>
@@ -906,14 +921,21 @@ export default function Menu() {
     if (sortF==='price-low')  items.sort((a,b) => a.price-b.price);
     if (sortF==='price-high') items.sort((a,b) => b.price-a.price);
     if (sortF==='popular')    items.sort((a,b) => (b.is_popular?1:0)-(a.is_popular?1:0));
-    // Veg / Non-veg filter
+    // Veg / Non-veg filter — use backend diet_type/food_type/veg_nonveg fields
     const isVegItem = i => {
+      const ft = (i.food_type||i.diet_type||i.veg_nonveg||i.dietary||i.type||'').toLowerCase();
+      if (ft === 'veg' || ft === 'vegetarian') return true;
       const tags = (i.tags||[]).map(t=>t.toLowerCase());
-      const type = (i.food_type||i.dietary||i.type||'').toLowerCase();
-      return tags.some(t=>t.includes('veg') && !t.includes('non')) || type.includes('veg');
+      return tags.some(t=>(t.includes('veg')||t.includes('vegetarian'))&&!t.includes('non'));
+    };
+    const isNonVegItem = i => {
+      const ft = (i.food_type||i.diet_type||i.veg_nonveg||i.dietary||i.type||'').toLowerCase();
+      if (ft === 'nonveg' || ft === 'non-veg' || ft === 'non_veg') return true;
+      const tags = (i.tags||[]).map(t=>t.toLowerCase());
+      return tags.some(t=>t.includes('non-veg')||t.includes('nonveg'));
     };
     if (vegFilter==='veg')    items = items.filter(i => isVegItem(i));
-    if (vegFilter==='nonveg') items = items.filter(i => !isVegItem(i));
+    if (vegFilter==='nonveg') items = items.filter(i => isNonVegItem(i));
     // Allergen filter — exclude items that contain selected allergens
     if (allergenFilter.length > 0) {
       items = items.filter(i => {
@@ -939,17 +961,92 @@ export default function Menu() {
           pos_id: o.pos_id || storedOutlet.pos_id || selOutlet,
         };
         setOutlet(mergedOutlet);
-        setMenuItems(o.menuItems);
-        setFiltered(o.menuItems);
-        setCategories([...new Set(o.menuItems.flatMap(i => i.category||[]))]);
-        // Extract all unique allergens from menu items
+
+        // ── Fetch enriched product data (allergens, diet_type, nutrition) from products API ──
+        let enrichedMap = {};
+        try {
+          const prodResp = await authFetch(`${API_BASE}/api/products?outlet_id=${selOutlet}&limit=500`);
+          const prodData = await prodResp.json();
+          const products = prodData?.products || prodData?.data || (Array.isArray(prodData) ? prodData : []);
+          products.forEach(p => {
+            const pid = String(p.external_id || p.id);
+            enrichedMap[pid] = p;
+          });
+        } catch (e) { console.warn('Products enrichment fetch failed:', e.message); }
+
+        // ── Fetch master allergen list ──
+        let masterAllergens = [];
+        try {
+          const allergenResp = await authFetch(`${API_BASE}/api/allergens`);
+          const allergenData = await allergenResp.json();
+          masterAllergens = allergenData?.allergens || allergenData || [];
+        } catch (e) { console.warn('Allergens fetch failed:', e.message); }
+
+        // ── Merge enriched data into menu items ──
+        const enrichedItems = o.menuItems.map(item => {
+          const pid = String(item.id);
+          const enriched = enrichedMap[pid] || {};
+          
+          // Allergens: use enriched allergen_names, or fallback to menu item allergens
+          let allergens = item.allergens || [];
+          if (enriched.allergen_names && Array.isArray(enriched.allergen_names) && enriched.allergen_names.length > 0) {
+            allergens = enriched.allergen_names;
+          } else if (enriched.allergen_ids && Array.isArray(enriched.allergen_ids) && enriched.allergen_ids.length > 0 && masterAllergens.length > 0) {
+            // Map allergen_ids to master allergens
+            allergens = enriched.allergen_ids
+              .map(aid => masterAllergens.find(a => a.id === aid))
+              .filter(Boolean);
+          }
+
+          // Diet type: use enriched diet_type or veg_nonveg
+          const diet_type = enriched.diet_type || enriched.veg_nonveg || '';
+
+          // Nutrition: use enriched real values
+          const nutrition = {};
+          if (enriched.calories != null)   nutrition.calories = Number(enriched.calories);
+          if (enriched.protein_g != null)  nutrition.protein = `${enriched.protein_g}g`;
+          if (enriched.carbs_g != null)    nutrition.carbs = `${enriched.carbs_g}g`;
+          if (enriched.fat_g != null)      nutrition.fat = `${enriched.fat_g}g`;
+          if (enriched.fiber_g != null)    nutrition.fiber = `${enriched.fiber_g}g`;
+          if (enriched.sodium_mg != null)  nutrition.sodium = `${enriched.sodium_mg}mg`;
+          if (enriched.sugar_g != null)    nutrition.sugar = `${enriched.sugar_g}g`;
+          const hasRealNutrition = Object.keys(nutrition).length > 0;
+
+          // Discount from offer
+          const offer = enriched.offer ? Number(enriched.offer) : 0;
+          const discount = offer > 0 && item.price > 0 ? Math.round((offer / item.price) * 100) : item.discount;
+
+          return {
+            ...item,
+            allergens,
+            allergen_ids: allergens.map(a => a.id),
+            food_type: diet_type,
+            diet_type,
+            is_bestseller: item.isBestseller || item.is_bestseller || (item.tags||[]).some(t => t.toLowerCase() === 'bestseller'),
+            is_popular: item.isPopular || item.is_popular || (item.tags||[]).some(t => t.toLowerCase() === 'popular'),
+            discount,
+            ...(hasRealNutrition ? { nutrition } : {}),
+          };
+        });
+
+        setMenuItems(enrichedItems);
+        setFiltered(enrichedItems);
+        setCategories([...new Set(enrichedItems.flatMap(i => i.category||[]))]);
+
+        // Extract all unique allergens from enriched items + master list
         const allergenMap = new Map();
-        o.menuItems.forEach(item => {
+        // Add from master list first
+        masterAllergens.forEach(a => {
+          if (a?.id) allergenMap.set(a.id, a);
+        });
+        // Add from items (in case master fetch failed)
+        enrichedItems.forEach(item => {
           (item.allergens||[]).forEach(a => {
             if (a?.id && !allergenMap.has(a.id)) allergenMap.set(a.id, a);
           });
         });
         setAllAllergens([...allergenMap.values()]);
+
         const prefs = storedOutlet?.preferences || o?.preferences || [];
         setPreferences(prefs.filter(p => p.itemCount > 0));
         localStorage.setItem('outlet', JSON.stringify(mergedOutlet));
@@ -1025,7 +1122,7 @@ export default function Menu() {
     <div className={`app-shell ${isDark ? 'dark' : ''}`}>
 
       {/* ══ LEFT SIDEBAR ══ */}
-      <LeftSidebar cart={cart} navigate={navigate} t={t} userData={userData} onProfile={() => setShowProfile(true)} isOpen={leftOpen} onToggle={() => setLeftOpen(o => !o)} currency={currency} />
+      <LeftSidebar cart={cart} navigate={navigate} t={t} userData={userData} onProfile={() => setShowProfile(true)} isOpen={leftOpen} onToggle={() => setLeftOpen(o => !o)} currency={currency} onSortOffers={() => { setSortF(''); setCategory('all'); setSearch(''); const el = document.querySelector('.scroll-area'); if(el) el.scrollTo({top:0,behavior:'smooth'}); }} />
 
       {/* ══ CENTER ══ */}
       <div className="center-col">
@@ -1167,6 +1264,9 @@ export default function Menu() {
         {/* SCROLL AREA */}
         <div className="scroll-area">
 
+          {/* HERO CAROUSEL */}
+          {!loading && <HeroCarousel outletData={outlet} />}
+
           {/* MENU GRID */}
           {loading ? (
             <div className="skl-grid" style={{ gridTemplateColumns:`repeat(${grid},1fr)` }}>
@@ -1218,6 +1318,54 @@ export default function Menu() {
             </>
           )}
 
+          {/* RECOMMENDATIONS — Bestsellers & Popular mixed */}
+          {!loading && category === 'all' && !search && menuItems.length > 0 && (() => {
+            const recs = menuItems.filter(i => i.is_bestseller || i.is_popular || i.isBestseller || i.isPopular);
+            if (recs.length === 0) return null;
+            return (
+              <>
+                <div className="section-hdr" style={{ marginTop: 24 }}>
+                  <h2 className="section-title">✨ {t('recommendations')}</h2>
+                  <span className="section-count">{recs.length} {t('items')}</span>
+                </div>
+                <div className="menu-grid" style={{ gridTemplateColumns:`repeat(${grid},1fr)` }}>
+                  {recs.slice(0, 10).map(item => (
+                    <MenuCard key={`rec-${item.id}`} item={item}
+                      inCart={!!cart.find(c => String(c.id)===String(item.id))}
+                      cartQty={cart.find(c => String(c.id)===String(item.id))?.quantity || 0}
+                      onAdd={addToCart} onOpen={setSelItem}
+                      onCustomize={setCustomizeItem}
+                      onChangeQty={(id, delta) => {
+                        setCart(prev => {
+                          const idx = prev.findIndex(c => String(c.id)===String(id));
+                          if (idx === -1) { if (delta > 0) addToCart(id); return prev; }
+                          const nc = prev.map((c, i) =>
+                            i === idx ? { ...c, quantity: c.quantity + delta } : c
+                          ).filter(c => c.quantity > 0);
+                          saveCart(nc);
+                          return nc;
+                        });
+                      }}
+                      currency={currency} />
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+
+          {/* ALLERGEN DISCLAIMER BAR */}
+          {!loading && allAllergens.length > 0 && (
+            <div className="allergen-notice">
+              <span className="allergen-notice__icon">⚠️</span>
+              <div className="allergen-notice__text">
+                <strong>Allergen Notice:</strong> Menu items may contain allergens. Please inform our staff of any dietary requirements or allergies before ordering. Allergen information is indicative only.
+              </div>
+              <button className="allergen-notice__btn" onClick={() => setShowAllergenPanel(true)}>
+                View Allergen Guide
+              </button>
+            </div>
+          )}
+
           {/* PAGINATION */}
           {totalPages > 1 && (
             <div className="mp__pg">
@@ -1235,27 +1383,54 @@ export default function Menu() {
       {/* ══ RIGHT CART PANEL ══ */}
       <RightCart cart={cart} setCart={setCart} currency={currency} navigate={navigate} t={t} isOpen={rightOpen} onToggle={() => setRightOpen(o => !o)} cartCount={cartCount} />
 
-      {/* ══ ALLERGEN FILTER PANEL ══ */}
+      {/* ══ ALLERGEN GUIDE & FILTER PANEL ══ */}
       {showAllergenPanel && (
         <div className="co-overlay" onClick={e => { if(e.target.classList.contains('co-overlay')) setShowAllergenPanel(false); }}>
-          <div className="co-modal" style={{ maxWidth: 420 }}>
+          <div className="co-modal" style={{ maxWidth: 560, maxHeight: '85vh', overflowY: 'auto' }}>
             <button className="co-close" onClick={() => setShowAllergenPanel(false)}>✕</button>
-            <h3 className="co-title">🛡️ Allergen Filter</h3>
-            <p style={{ fontSize: 13, color: 'var(--txt3)', margin: '0 0 12px' }}>
+            <h3 className="co-title" style={{ fontSize: 18 }}>🛡️ Allergen Guide & Disclaimer</h3>
+
+            {/* Important Notice */}
+            <div style={{ background:'rgba(245,166,35,0.12)', border:'1px solid rgba(245,166,35,0.3)', borderRadius:10, padding:'12px 16px', fontSize:13, color:'var(--txt2)', lineHeight:1.6, marginBottom: 16 }}>
+              <strong>⚠️ Important Notice:</strong> While we take every precaution, our kitchen handles multiple allergens. Cross-contamination is possible. Always inform staff of severe allergies.
+            </div>
+
+            <p style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 12, lineHeight: 1.5 }}>
+              The allergen information provided is based on standard recipes. Ingredients may vary. If you have a food allergy or intolerance, please speak to a member of staff before ordering.
+            </p>
+
+            {/* Common Allergen Codes */}
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt)', marginBottom: 10 }}>Common Allergen Codes</h4>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom: 20 }}>
+              {allAllergens.map(a => (
+                <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:10, border:'1px solid var(--border)', background:'var(--surface2,var(--bg3))' }}>
+                  <span style={{ width:32, height:32, borderRadius:8, background:a.color||'#ef4444', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:12, fontWeight:700, flexShrink:0 }}>
+                    {a.icon} {a.code}
+                  </span>
+                  <div>
+                    <div style={{ fontWeight:600, fontSize:13, color:'var(--txt)' }}>{a.name}</div>
+                    <div style={{ fontSize:11, color:'var(--txt3)' }}>Contains {a.name.toLowerCase()} products</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Filter Section */}
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt)', marginBottom: 8 }}>🔍 Filter by Allergens</h4>
+            <p style={{ fontSize: 12, color: 'var(--txt3)', margin: '0 0 10px' }}>
               Select allergens to <strong>exclude</strong> from the menu:
             </p>
             {allAllergens.length === 0 ? (
-              <p style={{ textAlign:'center', color:'var(--txt3)', padding: 20 }}>No allergen data available for current menu items.</p>
+              <p style={{ textAlign:'center', color:'var(--txt3)', padding: 16 }}>No allergen data available for current menu items.</p>
             ) : (
               <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:16 }}>
                 {allAllergens.map(a => {
                   const isActive = allergenFilter.includes(a.id);
                   return (
                     <button key={a.id}
-                      className={`veg-filter-btn ${isActive?'veg-filter-btn--on':''}`}
-                      style={{ background: isActive ? (a.color||'#ef4444') : 'var(--card)', color: isActive ? '#fff' : 'var(--txt1)', border: `1.5px solid ${a.color||'#ef4444'}`, borderRadius: 20, padding:'6px 14px', fontSize:13 }}
+                      style={{ background: isActive ? (a.color||'#ef4444') : 'var(--surface2,var(--bg3))', color: isActive ? '#fff' : 'var(--txt)', border: `1.5px solid ${a.color||'#ef4444'}`, borderRadius: 20, padding:'6px 14px', fontSize:13, cursor:'pointer', fontWeight:600, fontFamily:'inherit', transition:'all 150ms', display:'flex', alignItems:'center', gap:4 }}
                       onClick={() => setAllergenFilter(prev => isActive ? prev.filter(x=>x!==a.id) : [...prev, a.id])}>
-                      {a.icon} {a.name}
+                      {a.icon} {a.code} {a.name} {isActive && '✕'}
                     </button>
                   );
                 })}
@@ -1264,11 +1439,8 @@ export default function Menu() {
             {allergenFilter.length > 0 && (
               <button className="flt-clear" style={{ marginBottom: 12 }} onClick={() => setAllergenFilter([])}>✕ Clear All Allergen Filters</button>
             )}
-            {/* Disclaimer */}
-            <div style={{ background:'rgba(245,166,35,0.12)', border:'1px solid rgba(245,166,35,0.3)', borderRadius:10, padding:'10px 14px', fontSize:12, color:'var(--txt2)', lineHeight:1.5 }}>
-              <strong>⚠️ Allergen Disclaimer:</strong> While we make every effort to identify ingredients that may cause allergic reactions, we cannot guarantee that any menu item is completely free of allergens. Cross-contamination may occur during preparation. If you have a severe allergy, please inform our staff directly before placing your order.
-            </div>
-            <button className="co-btn co-btn--blue" style={{ marginTop:12, width:'100%' }} onClick={() => setShowAllergenPanel(false)}>
+
+            <button className="co-btn co-btn--blue" style={{ marginTop:8, width:'100%' }} onClick={() => setShowAllergenPanel(false)}>
               Done
             </button>
           </div>

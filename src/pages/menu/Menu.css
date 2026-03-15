@@ -979,3 +979,36 @@
   pointer-events: none; z-index: 10;
   box-shadow: 0 4px 20px rgba(34,197,94,0.4);
 }
+
+/* ─── ALLERGEN NOTICE BAR ──────────────────── */
+.allergen-notice {
+  display: flex; align-items: center; gap: 12px;
+  background: linear-gradient(135deg, rgba(245,166,35,0.08), rgba(245,166,35,0.15));
+  border: 1px solid rgba(245,166,35,0.25);
+  border-radius: 12px; padding: 14px 18px; margin: 20px 16px 8px;
+}
+.allergen-notice__icon { font-size: 20px; flex-shrink: 0; }
+.allergen-notice__text { flex: 1; font-size: 12.5px; color: var(--txt2); line-height: 1.5; }
+.allergen-notice__text strong { color: var(--txt); }
+.allergen-notice__btn {
+  flex-shrink: 0; padding: 7px 16px; border-radius: 8px;
+  background: #22c55e; color: #fff; border: none;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  font-family: inherit; white-space: nowrap;
+  transition: all 150ms;
+}
+.allergen-notice__btn:hover { background: #16a34a; transform: translateY(-1px); }
+
+/* Dark mode */
+[data-theme="dark"] .allergen-notice { background: rgba(245,166,35,0.08); border-color: rgba(245,166,35,0.2); }
+[data-theme="dark"] .allergen-notice__text { color: var(--txt2); }
+[data-theme="dark"] .allergen-notice__text strong { color: var(--gold); }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .allergen-notice { flex-direction: column; text-align: center; margin: 16px 10px 8px; padding: 12px 14px; }
+  .allergen-notice__btn { width: 100%; }
+}
+
+/* ─── NON-VEG RIBBON ──────────────────────── */
+.mc__ribbon--nonveg { background: #ef4444 !important; color: #fff !important; }
