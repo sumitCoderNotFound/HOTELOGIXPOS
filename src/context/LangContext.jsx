@@ -51,6 +51,7 @@ export const T = {
   chef_special:     { en: "Chef's Special",  hi: 'शेफ स्पेशल',       es: 'Especial del Chef'},
   most_ordered:     { en: 'Most Ordered',    hi: 'सबसे पसंदीदा',     es: 'Más Pedido'       },
   recommendations:  { en: "Chef's Recommendations", hi: 'शेफ की सिफारिशें', es: 'Recomendaciones' },
+  disclaimer:       { en: 'Allergen Disclaimer',   hi: 'एलर्जी अस्वीकरण', es: 'Aviso de Alérgenos' },
 
   // ── Nutrition
   nutrition_facts:  { en: 'Nutrition Facts', hi: 'पोषण जानकारी',    es: 'Datos Nutricionales'},

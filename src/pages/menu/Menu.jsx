@@ -13,18 +13,71 @@ const getCartRaw  = () => { for(const k of ['cartData','CartData','cart']){const
 const saveCart    = arr => localStorage.setItem('cartData', JSON.stringify(arr));
 const authFetch   = (url, opts={}) => { const t=safeJSON(localStorage.getItem('userData'),{}).token; if(!t) throw new Error('No authentication token found'); return fetch(url,{...opts,headers:{'Content-Type':'application/json',Authorization:`Bearer ${t}`,...(opts.headers||{})}}); };
 
-/* ─── Clock ─────────────────────────────────────────────────── */
-function Clock() {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
-  const days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return (
-    <div className="clock-pill">
-      <span className="clock-time">{now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})}</span>
-      <span className="clock-date">{days[now.getDay()]} {now.getDate()} {months[now.getMonth()]}</span>
-    </div>
-  );
+/* ─── Remove-from-cart animation ────────────────────────────── */
+function removeFromCartAnim(sourceEl, itemName, isFullRemove) {
+  if (!sourceEl) return;
+  const rect = sourceEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+
+  // 1. Red flash on the source element
+  sourceEl.animate([
+    { background: 'rgba(239,68,68,0.0)' },
+    { background: 'rgba(239,68,68,0.15)' },
+    { background: 'rgba(239,68,68,0.0)' },
+  ], { duration: 400, easing: 'ease-out' });
+
+  // 2. Floating text: "−1" or item name poof
+  const floater = document.createElement('div');
+  floater.textContent = isFullRemove ? '✕ Removed' : '−1';
+  floater.style.cssText = `
+    position:fixed; z-index:99999;
+    left:${cx}px; top:${cy}px;
+    transform:translate(-50%,-50%);
+    font-size:${isFullRemove ? '13px' : '18px'}; font-weight:700;
+    color:#ef4444;
+    pointer-events:none;
+    text-shadow:0 1px 8px rgba(239,68,68,0.3);
+    font-family:'DM Sans',sans-serif;
+    white-space:nowrap;
+    background:rgba(255,255,255,0.92); border-radius:20px;
+    padding:${isFullRemove ? '6px 14px' : '4px 12px'};
+    border:1.5px solid rgba(239,68,68,0.3);
+    box-shadow:0 4px 16px rgba(239,68,68,0.15);
+  `;
+  document.body.appendChild(floater);
+
+  floater.animate([
+    { opacity: 0, transform: 'translate(-50%,-50%) scale(0.5) translateY(0)' },
+    { opacity: 1, transform: 'translate(-50%,-50%) scale(1.1) translateY(-8px)', offset: 0.2 },
+    { opacity: 1, transform: 'translate(-50%,-50%) scale(1) translateY(-20px)', offset: 0.5 },
+    { opacity: 0, transform: 'translate(-50%,-50%) scale(0.8) translateY(-50px)' },
+  ], { duration: 800, easing: 'ease-out', fill: 'forwards' });
+
+  setTimeout(() => floater.remove(), 850);
+
+  // 3. Particle burst for full remove
+  if (isFullRemove) {
+    const colors = ['#ef4444','#f87171','#fca5a5','#fecaca','#dc2626'];
+    for (let i = 0; i < 8; i++) {
+      const p = document.createElement('div');
+      const angle = (i / 8) * Math.PI * 2;
+      const dist = 30 + Math.random() * 25;
+      p.style.cssText = `
+        position:fixed; z-index:99998;
+        width:6px; height:6px; border-radius:50%;
+        background:${colors[i % colors.length]};
+        left:${cx}px; top:${cy}px;
+        pointer-events:none;
+      `;
+      document.body.appendChild(p);
+      p.animate([
+        { opacity: 1, transform: 'translate(-50%,-50%) scale(1)' },
+        { opacity: 0, transform: `translate(${Math.cos(angle)*dist - 3}px, ${Math.sin(angle)*dist - 3}px) scale(0)` }
+      ], { duration: 500 + Math.random() * 200, easing: 'ease-out', fill: 'forwards' });
+      setTimeout(() => p.remove(), 750);
+    }
+  }
 }
 
 /* ─── Nutrient chips ─────────────────────────────────────────── */
@@ -95,7 +148,7 @@ const SBIcons = {
   Refresh: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
 };
 
-function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle }) {
+function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle, currency }) {
   const location  = useLocation();
   const guestName = userData?.guestName || userData?.guest?.guest_name || userData?.name || 'Guest';
   const room      = userData?.guest?.guestRoomId || userData?.guest?.room || userData?.roomNumber || 'N/A';
@@ -114,18 +167,24 @@ function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle 
   };
 
   const nav = [
-    { label: t('browse_menu'),   path:'/menu',         icon: SBIcons.Menu,    section: 'MENU' },
-    { label: t('my_cart'),       path:'/cart',          icon: SBIcons.Cart,    badge: cartCount||null },
-    { label: t('track_order'),   path:'/order-status',  icon: SBIcons.Track,   section: 'ORDERS', dot: true },
-    { label: t('order_history'), path:'/history',       icon: SBIcons.Hist    },
-    { label: t('my_profile'),    path:'PROFILE',        icon: SBIcons.Profile, section: 'ACCOUNT' },
-    { label: t('support'),       path: null,            icon: SBIcons.Support },
+    { label: t('browse_menu'),    path:'/menu',         icon: SBIcons.Menu,    section: 'MENU' },
+    { label: t('my_cart'),        path:'/cart',          icon: SBIcons.Cart,    badge: cartCount||null },
+    { label: t('recommendations'),path:null,             icon: SBIcons.Track,   section: 'DISCOVER', action:'recommend' },
+    { label: t('order_history'),  path:'/history',       icon: SBIcons.Hist    },
+    { label: t('my_profile'),     path:'PROFILE',        icon: SBIcons.Profile, section: 'ACCOUNT' },
+    { label: t('support'),        path: null,            icon: SBIcons.Support },
   ];
 
-  function handleNav(path) {
-    if (path === 'PROFILE') { onProfile(); return; }
-    if (!path) { alert('Support: +91 98765 43210'); return; }
-    navigate(path);
+  function handleNav(item) {
+    if (item.path === 'PROFILE') { onProfile(); return; }
+    if (item.action === 'recommend') { 
+      // Scroll to recommendations section or reset filters to show mixed categories
+      const el = document.querySelector('.scroll-area');
+      if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!item.path) { alert('Support: +91 98765 43210'); return; }
+    navigate(item.path);
   }
 
   return (
@@ -154,12 +213,13 @@ function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle 
       </div>
 
       <nav className="lsb__nav">
-        {nav.map(({label, path, icon, badge, section, dot}) => {
+        {nav.map((navItem) => {
+          const {label, path, icon, badge, section, dot} = navItem;
           const active = path && path !== 'PROFILE' && location.pathname === path;
           return (
             <React.Fragment key={label}>
               {section && <div className="lsb__section">{section}</div>}
-              <button className={`lsb__item ${active ? 'lsb__item--active' : ''}`} onClick={() => handleNav(path)}>
+              <button className={`lsb__item ${active ? 'lsb__item--active' : ''}`} onClick={() => handleNav(navItem)}>
                 {active && <span className="lsb__bar" />}
                 <span className="lsb__icon">{icon}</span>
                 <span className="lsb__label">{label}</span>
@@ -181,8 +241,8 @@ function LeftSidebar({ cart, navigate, t, userData, onProfile, isOpen, onToggle 
 
       <div className="lsb__summary">
         <div className="lsb__sum-row"><span>{t('items')}</span><span>{cartCount} {t('items')}</span></div>
-        <div className="lsb__sum-row"><span>{t('subtotal')}</span><span>₹ {subtotal.toLocaleString('en-IN')}</span></div>
-        <div className="lsb__sum-row lsb__sum-total"><span>{t('total')}</span><span>₹ {(subtotal+tax).toLocaleString('en-IN')}</span></div>
+        <div className="lsb__sum-row"><span>{t('subtotal')}</span><span>{currency} {subtotal.toLocaleString('en-IN')}</span></div>
+        <div className="lsb__sum-row lsb__sum-total"><span>{t('total')}</span><span>{currency} {(subtotal+tax).toLocaleString('en-IN')}</span></div>
       </div>
 
       <button className="lsb__order-btn" onClick={() => navigate('/cart')}>
@@ -199,9 +259,14 @@ function RightCart({ cart, setCart, currency, navigate, t, isOpen, onToggle, car
   const cartCount = cartCountProp ?? cart.reduce((s,i) => s+i.quantity, 0);
   const cartTotal = cart.reduce((s,i) => s+i.price*i.quantity, 0);
 
-  function changeQty(id, delta) {
+  function changeQty(id, delta, btnEl) {
     const idx = cart.findIndex(c => String(c.id) === String(id));
     if (idx === -1) return;
+    if (delta < 0) {
+      const item = cart[idx];
+      const isFullRemove = item.quantity <= 1 || delta <= -999;
+      removeFromCartAnim(btnEl || null, item.name, isFullRemove);
+    }
     const nc = cart.map((c, i) =>
       i === idx ? { ...c, quantity: c.quantity + delta } : c
     ).filter(c => c.quantity > 0);
@@ -243,10 +308,10 @@ function RightCart({ cart, setCart, currency, navigate, t, isOpen, onToggle, car
                 )}
               </div>
               <div className="rcp__item-controls">
-                <button className="rcp__ctrl" onClick={() => changeQty(item.id, -1)}>−</button>
+                <button className="rcp__ctrl" onClick={e => changeQty(item.id, -1, e.currentTarget)}>−</button>
                 <span className="rcp__qty">{item.quantity}</span>
                 <button className="rcp__ctrl" onClick={() => changeQty(item.id, 1)}>+</button>
-                <button className="rcp__del" onClick={() => changeQty(item.id, -999)}>✕</button>
+                <button className="rcp__del" onClick={e => changeQty(item.id, -999, e.currentTarget)}>✕</button>
               </div>
             </div>
           ))
@@ -274,12 +339,23 @@ function ChangeSelectionModal({ onClose, onChangeOutlet, onChangeCategory }) {
     <div className="co-overlay" onClick={e => { if(e.target.classList.contains('co-overlay')) onClose(); }}>
       <div className="co-modal">
         <button className="co-close" onClick={onClose}>✕</button>
-        <h3 className="co-title">{t('change_selection')}</h3>
+        <h3 className="co-title">🔄 {t('change_selection')}</h3>
+        <p style={{ fontSize: 13, color: 'var(--txt3)', margin: '0 0 16px', lineHeight: 1.5 }}>
+          Switch to a different restaurant outlet or change your dining category/meal time.
+        </p>
         <button className="co-btn co-btn--blue" onClick={onChangeOutlet}>
-          <span>🏨</span> {t('change_outlet')}
+          <span>🏨</span> 
+          <div style={{ textAlign:'left' }}>
+            <strong>{t('change_outlet')}</strong>
+            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>Switch to a different restaurant or bar</div>
+          </div>
         </button>
         <button className="co-btn co-btn--green" onClick={onChangeCategory}>
-          <span>📋</span> {t('change_category')}
+          <span>📋</span>
+          <div style={{ textAlign:'left' }}>
+            <strong>{t('change_category')}</strong>
+            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>Switch meal time (Breakfast, Lunch, Dinner…)</div>
+          </div>
         </button>
       </div>
     </div>
@@ -333,8 +409,48 @@ function ItemModal({ item, onClose, onAdd, inCart, currency }) {
 
   function handleAdd() {
     setAdding(true);
+    // Toss animation from modal image to cart
+    const modalImg = document.querySelector('.imdl__img');
+    const isMobile = window.innerWidth <= 768;
+    const cartEl = isMobile
+      ? (document.querySelector('.mbn-item:nth-child(2)') || document.querySelector('.mobile-bottom-nav button:nth-child(2)'))
+      : (document.querySelector('.tb-cart-btn') || document.querySelector('.rcp__toggle'));
+    if (modalImg && cartEl) {
+      const srcRect = modalImg.getBoundingClientRect();
+      const tgtRect = cartEl.getBoundingClientRect();
+      const flyer = document.createElement('div');
+      const imgSrc = item.image || '';
+      const sz = isMobile ? 50 : 70;
+      const h = sz / 2;
+      flyer.style.cssText = `
+        position:fixed; z-index:99999; width:${sz}px; height:${sz}px; border-radius:50%;
+        background:${imgSrc ? `url('${imgSrc}') center/cover` : 'var(--gold)'};
+        box-shadow:0 8px 32px rgba(245,166,35,0.5), 0 0 0 3px var(--gold);
+        left:${srcRect.left + srcRect.width/2 - h}px; top:${srcRect.top + srcRect.height/2 - h}px;
+        pointer-events:none;
+      `;
+      document.body.appendChild(flyer);
+      const dx = tgtRect.left + tgtRect.width/2 - h - (srcRect.left + srcRect.width/2 - h);
+      const dy = tgtRect.top + tgtRect.height/2 - h - (srcRect.top + srcRect.height/2 - h);
+      const goingDown = dy > 0;
+      const arcX = goingDown ? (dx > 0 ? -50 : 50) : 0;
+      const arcY = goingDown ? -30 : -80;
+      const dur = isMobile ? 900 : 850;
+      const anim = flyer.animate([
+        { transform:'scale(1) rotate(0deg)', opacity:1 },
+        { transform:`translate(${dx*0.3+arcX}px,${dy*0.3+arcY}px) scale(0.8) rotate(120deg)`, opacity:1, offset:0.35 },
+        { transform:`translate(${dx*0.65+arcX*0.3}px,${dy*0.65}px) scale(0.5) rotate(300deg)`, opacity:0.9, offset:0.7 },
+        { transform:`translate(${dx}px,${dy}px) scale(0.15) rotate(460deg)`, opacity:0.5 }
+      ], { duration:dur, easing:'cubic-bezier(0.25,0.46,0.45,0.94)', fill:'forwards' });
+      anim.onfinish = () => {
+        flyer.remove();
+        cartEl.animate([
+          {transform:'scale(1)'},{transform:'scale(1.3)'},{transform:'scale(0.9)'},{transform:'scale(1)'}
+        ], { duration:400, easing:'ease-out' });
+      };
+    }
     onAdd(item.id, { spice, notes });
-    setTimeout(() => { setAdding(false); onClose(); }, 500);
+    setTimeout(() => { setAdding(false); onClose(); }, 600);
   }
 
   return (
@@ -432,11 +548,119 @@ function ItemModal({ item, onClose, onAdd, inCart, currency }) {
 /* ─── Menu Card (no separate customize button) ───────────────── */
 function MenuCard({ item, inCart, cartQty, onAdd, onOpen, onCustomize, onChangeQty, currency }) {
   const [pulse, setPulse] = useState(false);
+  const [showFlash, setShowFlash] = useState(false);
+  const imgRef = useRef(null);
+
+  function tossToCart(e) {
+    // Get source position (the card image)
+    const srcEl = imgRef.current;
+    if (!srcEl) return;
+    const srcRect = srcEl.getBoundingClientRect();
+
+    // Detect mobile vs desktop — find the right cart target
+    const isMobile = window.innerWidth <= 768;
+    const cartEl = isMobile
+      ? (document.querySelector('.mbn-item:nth-child(2)') || document.querySelector('.mobile-bottom-nav button:nth-child(2)'))  // Mobile bottom nav cart button
+      : (document.querySelector('.tb-cart-btn') || document.querySelector('.rcp__toggle'));
+    if (!cartEl) return;
+    const tgtRect = cartEl.getBoundingClientRect();
+
+    // Create flying clone
+    const flyer = document.createElement('div');
+    const imgSrc = item.image || '';
+    const flyerSize = isMobile ? 50 : 60;
+    const half = flyerSize / 2;
+    flyer.style.cssText = `
+      position: fixed;
+      z-index: 99999;
+      width: ${flyerSize}px; height: ${flyerSize}px;
+      border-radius: 50%;
+      background: ${imgSrc ? `url('${imgSrc}') center/cover` : 'var(--gold)'};
+      box-shadow: 0 8px 32px rgba(245,166,35,0.5), 0 0 0 3px var(--gold);
+      left: ${srcRect.left + srcRect.width / 2 - half}px;
+      top: ${srcRect.top + srcRect.height / 2 - half}px;
+      pointer-events: none;
+      transition: none;
+    `;
+    if (!imgSrc) {
+      flyer.textContent = '🍽️';
+      flyer.style.display = 'flex';
+      flyer.style.alignItems = 'center';
+      flyer.style.justifyContent = 'center';
+      flyer.style.fontSize = '22px';
+    }
+    document.body.appendChild(flyer);
+
+    // Calculate destination offset
+    const startX = srcRect.left + srcRect.width / 2 - half;
+    const startY = srcRect.top + srcRect.height / 2 - half;
+    const endX   = tgtRect.left + tgtRect.width / 2 - half;
+    const endY   = tgtRect.top + tgtRect.height / 2 - half;
+    const dx = endX - startX;
+    const dy = endY - startY;
+
+    // Arc bulge: for mobile (going DOWN), arc curves LEFT/RIGHT
+    // For desktop (going UP/RIGHT), arc curves upward
+    const goingDown = dy > 0;
+    const arcX = goingDown ? (dx > 0 ? -60 : 60) : 0;  // horizontal bulge on mobile
+    const arcY = goingDown ? -40 : -80;                   // slight upward lift even going down
+
+    // Slower duration for mobile
+    const duration = isMobile ? 900 : 800;
+
+    // Animate with keyframes
+    const anim = flyer.animate([
+      {
+        transform: 'scale(1) rotate(0deg)',
+        opacity: 1,
+      },
+      {
+        transform: `translate(${dx * 0.25 + arcX}px, ${dy * 0.25 + arcY}px) scale(0.85) rotate(120deg)`,
+        opacity: 1,
+        offset: 0.3,
+      },
+      {
+        transform: `translate(${dx * 0.55 + arcX * 0.5}px, ${dy * 0.55}px) scale(0.6) rotate(270deg)`,
+        opacity: 0.95,
+        offset: 0.6,
+      },
+      {
+        transform: `translate(${dx * 0.85}px, ${dy * 0.85}px) scale(0.35) rotate(400deg)`,
+        opacity: 0.8,
+        offset: 0.85,
+      },
+      {
+        transform: `translate(${dx}px, ${dy}px) scale(0.15) rotate(480deg)`,
+        opacity: 0.5,
+      }
+    ], {
+      duration,
+      easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+      fill: 'forwards',
+    });
+
+    // Bounce the cart icon on arrival
+    anim.onfinish = () => {
+      flyer.remove();
+      if (cartEl) {
+        cartEl.animate([
+          { transform: 'scale(1)' },
+          { transform: 'scale(1.3)' },
+          { transform: 'scale(0.9)' },
+          { transform: 'scale(1.05)' },
+          { transform: 'scale(1)' },
+        ], { duration: 400, easing: 'ease-out' });
+      }
+    };
+  }
 
   function handleAdd(e) {
     e.stopPropagation();
     setPulse(true);
     setTimeout(() => setPulse(false), 500);
+    tossToCart(e);
+    setShowFlash(true);
+    setTimeout(() => setShowFlash(false), 750);
     onAdd(item.id);
   }
   function handleCustomize(e) {
@@ -445,23 +669,36 @@ function MenuCard({ item, inCart, cartQty, onAdd, onOpen, onCustomize, onChangeQ
   }
   function handleQty(e, delta) {
     e.stopPropagation();
+    if (delta < 0) {
+      const isFullRemove = cartQty <= 1;
+      removeFromCartAnim(imgRef.current, item.name, isFullRemove);
+    }
     onChangeQty(item.id, delta);
   }
 
   const hasNutri = NUTRI.some(n => getNV(item,n) != null);
+  const tags = (item.tags||[]).map(t=>t.toLowerCase());
+  const foodType = (item.food_type||item.dietary||item.type||'').toLowerCase();
+  const isVeg = tags.some(t=>t.includes('veg')&&!t.includes('non')) || foodType.includes('veg');
+  const isNonVeg = tags.some(t=>t.includes('non-veg')||t.includes('nonveg')) || foodType.includes('non');
+  const vegDotColor = isVeg ? '#22c55e' : isNonVeg ? '#ef4444' : null;
 
   return (
     <div className={`mc ${inCart?'mc--in':''}`} onClick={() => onOpen(item)}>
-      <div className="mc__img" style={{ backgroundImage:`url('${item.image||''}')` }}>
+      <div className={`mc__img ${showFlash ? 'mc--adding' : ''}`} ref={imgRef} style={{ backgroundImage:`url('${item.image||''}')` }}>
         {!item.image && <div className="mc__ph">🍽️</div>}
         {item.is_bestseller && <div className="mc__ribbon mc__ribbon--star">⭐ Best</div>}
         {item.is_popular    && <div className="mc__ribbon mc__ribbon--hot">🔥 Hot</div>}
         {item.discount      && <div className="mc__ribbon mc__ribbon--off">{item.discount}% OFF</div>}
         {item.tags?.some(tg=>tg.toLowerCase().includes('veg')) && <div className="mc__ribbon mc__ribbon--veg">Veg</div>}
         {inCart && <span className="mc__qty-badge">{cartQty}</span>}
+        {showFlash && <span className="mc__added-flash">✓</span>}
       </div>
       <div className="mc__body">
-        <h3 className="mc__name">{item.name}</h3>
+        <div className="mc__name-row">
+          {vegDotColor && <span className="mc__veg-dot" style={{background: vegDotColor}} title={isVeg?'Veg':'Non-Veg'} />}
+          <h3 className="mc__name">{item.name}</h3>
+        </div>
         {item.description && <p className="mc__desc">{item.description}</p>}
         {hasNutri && <NutriPills item={item} />}
         {item.allergens?.length > 0 && (
@@ -484,7 +721,7 @@ function MenuCard({ item, inCart, cartQty, onAdd, onOpen, onCustomize, onChangeQ
               <div className="mc__qty-ctrl" onClick={e => e.stopPropagation()}>
                 <button className="mc__qty-btn mc__qty-btn--minus" onClick={e => handleQty(e, -1)}>−</button>
                 <span className="mc__qty-num">{cartQty}</span>
-                <button className={`mc__qty-btn mc__qty-btn--plus ${pulse?'mc__btn--pulse':''}`} onClick={e => { e.stopPropagation(); setPulse(true); setTimeout(()=>setPulse(false),500); onAdd(item.id); }}>+</button>
+                <button className={`mc__qty-btn mc__qty-btn--plus ${pulse?'mc__btn--pulse':''}`} onClick={e => { e.stopPropagation(); setPulse(true); setTimeout(()=>setPulse(false),500); tossToCart(e); onAdd(item.id); }}>+</button>
               </div>
             ) : (
               <button className={`mc__btn ${pulse?'mc__btn--pulse':''}`} onClick={handleAdd}>+</button>
@@ -601,6 +838,10 @@ export default function Menu() {
   const [loading, setLoading]         = useState(true);
   const [outlet, setOutlet]           = useState({});
   const [category, setCategory]       = useState('all');
+  const [vegFilter, setVegFilter]     = useState(''); // '' | 'veg' | 'nonveg'
+  const [allergenFilter, setAllergenFilter] = useState([]); // array of allergen ids to EXCLUDE
+  const [showAllergenPanel, setShowAllergenPanel] = useState(false);
+  const [allAllergens, setAllAllergens] = useState([]); // master list extracted from menu items
   const [categories, setCategories]   = useState([]);
   const [preferences, setPreferences] = useState([]);
   const [activeShift, setActiveShift] = useState(() => localStorage.getItem('selectedShift') || '');
@@ -611,8 +852,23 @@ export default function Menu() {
   const [page, setPage]               = useState(1);
   const PER_PAGE = 20;
   const [showProfile, setShowProfile]     = useState(false);
-  const [leftOpen, setLeftOpen]           = useState(false); // default collapsed
-  const [rightOpen, setRightOpen]         = useState(false); // default collapsed
+  const [leftOpen, setLeftOpen]           = useState(false);
+  const [rightOpen, setRightOpen]         = useState(false);
+
+  // Auto-open right cart panel when items added, auto-close when empty
+  useEffect(() => {
+    if (cart.length > 0 && !rightOpen) setRightOpen(true);
+    if (cart.length === 0 && rightOpen) setRightOpen(false);
+  }, [cart.length]);
+
+  // Auto-open left sidebar when cart has items (on initial load)
+  useEffect(() => {
+    if (cart.length > 0 && !leftOpen) setLeftOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Set document title
+  useEffect(() => { document.title = 'POS'; }, []);
   const [selItem, setSelItem]         = useState(null);
   const [customizeItem, setCustomizeItem] = useState(null);
   const [toast, setToast]             = useState(null);
@@ -650,8 +906,23 @@ export default function Menu() {
     if (sortF==='price-low')  items.sort((a,b) => a.price-b.price);
     if (sortF==='price-high') items.sort((a,b) => b.price-a.price);
     if (sortF==='popular')    items.sort((a,b) => (b.is_popular?1:0)-(a.is_popular?1:0));
+    // Veg / Non-veg filter
+    const isVegItem = i => {
+      const tags = (i.tags||[]).map(t=>t.toLowerCase());
+      const type = (i.food_type||i.dietary||i.type||'').toLowerCase();
+      return tags.some(t=>t.includes('veg') && !t.includes('non')) || type.includes('veg');
+    };
+    if (vegFilter==='veg')    items = items.filter(i => isVegItem(i));
+    if (vegFilter==='nonveg') items = items.filter(i => !isVegItem(i));
+    // Allergen filter — exclude items that contain selected allergens
+    if (allergenFilter.length > 0) {
+      items = items.filter(i => {
+        const itemAllergenIds = (i.allergens||[]).map(a => a.id);
+        return !allergenFilter.some(af => itemAllergenIds.includes(af));
+      });
+    }
     setFiltered(items); setPage(1);
-  }, [menuItems, category, search, priceF, sortF]);
+  }, [menuItems, category, search, priceF, sortF, vegFilter, allergenFilter]);
 
   async function loadMenu(shiftId) {
     const currentShift = shiftId || localStorage.getItem('selectedShift');
@@ -671,6 +942,14 @@ export default function Menu() {
         setMenuItems(o.menuItems);
         setFiltered(o.menuItems);
         setCategories([...new Set(o.menuItems.flatMap(i => i.category||[]))]);
+        // Extract all unique allergens from menu items
+        const allergenMap = new Map();
+        o.menuItems.forEach(item => {
+          (item.allergens||[]).forEach(a => {
+            if (a?.id && !allergenMap.has(a.id)) allergenMap.set(a.id, a);
+          });
+        });
+        setAllAllergens([...allergenMap.values()]);
         const prefs = storedOutlet?.preferences || o?.preferences || [];
         setPreferences(prefs.filter(p => p.itemCount > 0));
         localStorage.setItem('outlet', JSON.stringify(mergedOutlet));
@@ -718,7 +997,14 @@ export default function Menu() {
     notifTimer.current = setTimeout(() => setToast(null), 2600);
   }
 
-  function changeMobileQty(id, delta) {
+  function changeMobileQty(id, delta, btnEl) {
+    if (delta < 0) {
+      const item = cart.find(c => String(c.id) === String(id));
+      if (item) {
+        const isFullRemove = item.quantity <= 1 || delta <= -999;
+        removeFromCartAnim(btnEl || null, item.name, isFullRemove);
+      }
+    }
     setCart(prev => {
       const idx = prev.findIndex(c => String(c.id) === String(id));
       if (idx === -1) return prev;
@@ -739,7 +1025,7 @@ export default function Menu() {
     <div className={`app-shell ${isDark ? 'dark' : ''}`}>
 
       {/* ══ LEFT SIDEBAR ══ */}
-      <LeftSidebar cart={cart} navigate={navigate} t={t} userData={userData} onProfile={() => setShowProfile(true)} isOpen={leftOpen} onToggle={() => setLeftOpen(o => !o)} />
+      <LeftSidebar cart={cart} navigate={navigate} t={t} userData={userData} onProfile={() => setShowProfile(true)} isOpen={leftOpen} onToggle={() => setLeftOpen(o => !o)} currency={currency} />
 
       {/* ══ CENTER ══ */}
       <div className="center-col">
@@ -757,7 +1043,7 @@ export default function Menu() {
                 }
               </svg>
             </button>
-            <button className="tb-outlet" onClick={() => setShowChangeModal(true)}>
+            <button className="tb-outlet" onClick={() => setShowChangeModal(true)} title="Click to change outlet or category">
               <img
                 src="https://www.hotelogix.com/wp-content/themes/hotelogix/images/hotelogix-logo.svg"
                 alt="HotelOGIX" className="tb-logo-inline"
@@ -768,7 +1054,10 @@ export default function Menu() {
                 <span className="tb-outlet-name">{outlet.name || 'Restaurant'}</span>
                 <span className="tb-outlet-time">{outlet.timing || '6 AM – 11 PM'}</span>
               </div>
-              <span className="tb-outlet-arrow">▾</span>
+              <span className="tb-outlet-change-hint">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Change
+              </span>
             </button>
 
             {/* Search — visible on desktop only here */}
@@ -779,8 +1068,7 @@ export default function Menu() {
             </div>
 
             <div className="tb-right">
-              <Clock />
-              <button className="tb-icon-btn tb-notif">
+              <button className="tb-icon-btn tb-notif" style={{display:'none'}}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
               </button>
               {/* Cart panel toggle — desktop only */}
@@ -788,7 +1076,9 @@ export default function Menu() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
                 {cartCount > 0 && <span className="tb-cart-badge">{cartCount}</span>}
               </button>
-              <button className="tb-icon-btn" title="Allergens">🛡️</button>
+              <button className={`tb-icon-btn ${allergenFilter.length > 0 ? 'tb-icon-btn--active' : ''}`} title="Allergen Filter" onClick={() => setShowAllergenPanel(p => !p)}>
+                🛡️ {allergenFilter.length > 0 && <span className="tb-cart-badge">{allergenFilter.length}</span>}
+              </button>
               <ThemeLangBar compact={true} />
               <button className="tb-avatar" onClick={() => setShowProfile(true)}>
                 {(userData?.guestName||userData?.guest?.guest_name||'G').charAt(0).toUpperCase()}
@@ -809,66 +1099,17 @@ export default function Menu() {
           </div>
         </header>
 
-        {/* CATEGORY STRIP */}
-        <div className="cat-strip">
-          <button className={`cat-btn ${category==='all'?'cat-btn--on':''}`} onClick={() => setCategory('all')}>
-            {t('all')} <span className="cat-count">{menuItems.length}</span>
-          </button>
-          {categories.map(cat => (
-            <button key={cat} className={`cat-btn ${category===cat?'cat-btn--on':''}`} onClick={() => setCategory(cat)}>
-              {cat} <span className="cat-count">{menuItems.filter(i=>i.category?.includes(cat)).length}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* FILTER BAR */}
-        <div className="filter-bar">
-          <div className="filter-bar__left">
-            <select value={priceF} onChange={e=>setPriceF(e.target.value)} className="flt-sel">
-              <option value="">{t('all_prices')}</option>
-              <option value="0-300">{currency}0–300</option>
-              <option value="300-500">{currency}300–500</option>
-              <option value="500-800">{currency}500–800</option>
-              <option value="800+">{currency}800+</option>
-            </select>
-            <select value={sortF} onChange={e=>setSortF(e.target.value)} className="flt-sel">
-              <option value="">{t('sort_by')}</option>
-              <option value="price-low">{t('price_low')}</option>
-              <option value="price-high">{t('price_high')}</option>
-              <option value="popular">{t('popular')}</option>
-            </select>
-            <div className="flt-grid-btns">
-              {[5,4,3,2].map(n => (
-                <button key={n} className={`flt-grid-btn ${grid===n?'flt-grid-btn--on':''}`} onClick={() => setGrid(n)}>{n}×</button>
-              ))}
-            </div>
-            {(search||priceF||sortF||category!=='all') && (
-              <button className="flt-clear" onClick={() => { setSearch(''); setPriceF(''); setSortF(''); setCategory('all'); }}>{t('clear')}</button>
-            )}
-          </div>
-          <span className="flt-count">{filtered.length} {t('items')}</span>
-        </div>
-
-        {/* SCROLL AREA */}
-        <div className="scroll-area">
-          {toast && <div className="mp-toast">{toast}</div>}
-
-          {/* HERO */}
-          {!loading && <HeroCarousel outletData={outlet} />}
-
-          {/* PREFERENCE BAR */}
+        {/* UNIFIED FILTER BAR — categories + preferences + veg + price + sort */}
+        <div className="unified-bar">
+          {/* Row 1: Preference tabs (if any) — shown above categories */}
           {preferences.length > 0 && (
             <div className="pref-bar">
-              <span className="pref-bar__label">Preference:</span>
+              <span className="pref-bar__label">Meal:</span>
               <div className="pref-bar__tabs">
                 {preferences.map(pref => (
                   <button key={pref.id}
                     className={`pref-tab ${String(pref.id)===activeShift?'pref-tab--on':''}`}
-                    onClick={() => {
-                      localStorage.setItem('selectedShift', pref.id);
-                      setActiveShift(String(pref.id));
-                      loadMenu(pref.id);
-                    }}>
+                    onClick={() => { localStorage.setItem('selectedShift', pref.id); setActiveShift(String(pref.id)); loadMenu(pref.id); }}>
                     {pref.icon && <span className="pref-tab__icon">{pref.icon}</span>}
                     {pref.title} {pref.itemCount > 0 && <span className="pref-tab__count">({pref.itemCount})</span>}
                   </button>
@@ -876,6 +1117,55 @@ export default function Menu() {
               </div>
             </div>
           )}
+
+          {/* Row 2: Category tabs */}
+          <div className="cat-strip">
+            <button className={`cat-btn ${category==='all'?'cat-btn--on':''}`} onClick={() => setCategory('all')}>
+              All <span className="cat-count">{menuItems.length}</span>
+            </button>
+            {categories.map(cat => (
+              <button key={cat} className={`cat-btn ${category===cat?'cat-btn--on':''}`} onClick={() => setCategory(cat)}>
+                {cat} <span className="cat-count">{menuItems.filter(i=>i.category?.includes(cat)).length}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Row 3: Filters */}
+          <div className="filter-bar">
+            <div className="filter-bar__left">
+              {/* Veg / Non-veg filter */}
+              <div className="veg-filter-btns">
+                <button className={`veg-filter-btn ${vegFilter===''?'veg-filter-btn--on':''}`} onClick={() => setVegFilter('')}>All</button>
+                <button className={`veg-filter-btn veg-filter-btn--veg ${vegFilter==='veg'?'veg-filter-btn--on':''}`} onClick={() => setVegFilter(vegFilter==='veg'?'':'veg')}>
+                  🟢 Veg
+                </button>
+                <button className={`veg-filter-btn veg-filter-btn--nonveg ${vegFilter==='nonveg'?'veg-filter-btn--on':''}`} onClick={() => setVegFilter(vegFilter==='nonveg'?'':'nonveg')}>
+                  🔴 Non-Veg
+                </button>
+              </div>
+              <select value={priceF} onChange={e=>setPriceF(e.target.value)} className="flt-sel">
+                <option value="">Price</option>
+                <option value="0-300">{currency}0–300</option>
+                <option value="300-500">{currency}300–500</option>
+                <option value="500-800">{currency}500–800</option>
+                <option value="800+">{currency}800+</option>
+              </select>
+              <select value={sortF} onChange={e=>setSortF(e.target.value)} className="flt-sel">
+                <option value="">Sort</option>
+                <option value="price-low">Price ↑</option>
+                <option value="price-high">Price ↓</option>
+                <option value="popular">Popular</option>
+              </select>
+              {(search||priceF||sortF||category!=='all'||vegFilter||allergenFilter.length>0) && (
+                <button className="flt-clear" onClick={() => { setSearch(''); setPriceF(''); setSortF(''); setCategory('all'); setVegFilter(''); setAllergenFilter([]); }}>✕ Clear</button>
+              )}
+            </div>
+            <span className="flt-count">{filtered.length} items</span>
+          </div>
+        </div>
+
+        {/* SCROLL AREA */}
+        <div className="scroll-area">
 
           {/* MENU GRID */}
           {loading ? (
@@ -944,6 +1234,46 @@ export default function Menu() {
 
       {/* ══ RIGHT CART PANEL ══ */}
       <RightCart cart={cart} setCart={setCart} currency={currency} navigate={navigate} t={t} isOpen={rightOpen} onToggle={() => setRightOpen(o => !o)} cartCount={cartCount} />
+
+      {/* ══ ALLERGEN FILTER PANEL ══ */}
+      {showAllergenPanel && (
+        <div className="co-overlay" onClick={e => { if(e.target.classList.contains('co-overlay')) setShowAllergenPanel(false); }}>
+          <div className="co-modal" style={{ maxWidth: 420 }}>
+            <button className="co-close" onClick={() => setShowAllergenPanel(false)}>✕</button>
+            <h3 className="co-title">🛡️ Allergen Filter</h3>
+            <p style={{ fontSize: 13, color: 'var(--txt3)', margin: '0 0 12px' }}>
+              Select allergens to <strong>exclude</strong> from the menu:
+            </p>
+            {allAllergens.length === 0 ? (
+              <p style={{ textAlign:'center', color:'var(--txt3)', padding: 20 }}>No allergen data available for current menu items.</p>
+            ) : (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:16 }}>
+                {allAllergens.map(a => {
+                  const isActive = allergenFilter.includes(a.id);
+                  return (
+                    <button key={a.id}
+                      className={`veg-filter-btn ${isActive?'veg-filter-btn--on':''}`}
+                      style={{ background: isActive ? (a.color||'#ef4444') : 'var(--card)', color: isActive ? '#fff' : 'var(--txt1)', border: `1.5px solid ${a.color||'#ef4444'}`, borderRadius: 20, padding:'6px 14px', fontSize:13 }}
+                      onClick={() => setAllergenFilter(prev => isActive ? prev.filter(x=>x!==a.id) : [...prev, a.id])}>
+                      {a.icon} {a.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {allergenFilter.length > 0 && (
+              <button className="flt-clear" style={{ marginBottom: 12 }} onClick={() => setAllergenFilter([])}>✕ Clear All Allergen Filters</button>
+            )}
+            {/* Disclaimer */}
+            <div style={{ background:'rgba(245,166,35,0.12)', border:'1px solid rgba(245,166,35,0.3)', borderRadius:10, padding:'10px 14px', fontSize:12, color:'var(--txt2)', lineHeight:1.5 }}>
+              <strong>⚠️ Allergen Disclaimer:</strong> While we make every effort to identify ingredients that may cause allergic reactions, we cannot guarantee that any menu item is completely free of allergens. Cross-contamination may occur during preparation. If you have a severe allergy, please inform our staff directly before placing your order.
+            </div>
+            <button className="co-btn co-btn--blue" style={{ marginTop:12, width:'100%' }} onClick={() => setShowAllergenPanel(false)}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ══ MODALS ══ */}
       {showChangeModal && (
@@ -1041,10 +1371,10 @@ export default function Menu() {
                   <div className="mcd-item-price">{currency} {item.price}</div>
                 </div>
                 <div className="mcd-item-controls">
-                  <button className="mcd-ctrl" onClick={() => changeMobileQty(item.id, -1)}>−</button>
+                  <button className="mcd-ctrl" onClick={e => changeMobileQty(item.id, -1, e.currentTarget)}>−</button>
                   <span className="mcd-qty">{item.quantity}</span>
                   <button className="mcd-ctrl" onClick={() => changeMobileQty(item.id, 1)}>+</button>
-                  <button className="mcd-del" onClick={() => changeMobileQty(item.id, -999)}>✕</button>
+                  <button className="mcd-del" onClick={e => changeMobileQty(item.id, -999, e.currentTarget)}>✕</button>
                 </div>
               </div>
             ))
@@ -1062,6 +1392,9 @@ export default function Menu() {
           </div>
         )}
       </div>
+
+      {/* ══ TOAST — fixed overlay, never affects layout ══ */}
+      {toast && <div className="mp-toast">{toast}</div>}
 
     </div>
   );

@@ -276,3 +276,16 @@
 [data-theme="dark"] .hist-sheet-sum-total { border-color: var(--border); color: var(--txt); }
 [data-theme="dark"] .hist-empty h3 { color: var(--txt); }
 [data-theme="dark"] .hist-empty p  { color: var(--txt3); }
+/* ─── REORDER BUTTON ON CARD ───────────────── */
+.hist-card-reorder {
+  display: block; width: 100%; margin-top: 8px;
+  padding: 7px 12px; border-radius: 8px;
+  background: var(--primary-dim, rgba(21,101,192,0.1));
+  color: var(--primary, #1565C0);
+  border: 1px solid transparent; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  transition: all 150ms;
+}
+.hist-card-reorder:hover { background: var(--primary, #1565C0); color: #fff; }
+[data-theme="dark"] .hist-card-reorder { background: var(--gold-dim); color: var(--gold); }
+[data-theme="dark"] .hist-card-reorder:hover { background: var(--gold); color: #1A1100; }

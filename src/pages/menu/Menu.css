@@ -44,7 +44,7 @@
 
 /* ── Toggle button on sidebar edge ── */
 .lsb__toggle {
-  position: absolute; top: 16px; right: 3px;
+  position: absolute; top: 16px; right: -13px;
   width: 26px; height: 26px;
   background: #1565C0; border: 2px solid rgba(255,255,255,0.35);
   border-radius: 50%; cursor: pointer;
@@ -418,13 +418,15 @@
 
 /* ─── TOAST ──────────────────────────────────── */
 .mp-toast {
-  position: sticky; top: 8px; left: 50%; transform: translateX(-50%); width: fit-content;
-  background: #111827; color: white; padding: 10px 20px; border-radius: 12px;
-  font-size: 13px; font-weight: 600; z-index: 50; margin: 8px auto; text-align: center;
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%); width: fit-content;
+  background: #111827; color: white; padding: 10px 24px; border-radius: 12px;
+  font-size: 13px; font-weight: 600; z-index: 9999; text-align: center;
   border: 1px solid rgba(245,166,35,0.3);
-  animation: toastPop 0.35s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  pointer-events: none;
+  animation: toastSlide 0.35s cubic-bezier(0.34,1.56,0.64,1);
 }
-@keyframes toastPop { from{opacity:0;transform:translateX(-50%) scale(0.85)} to{opacity:1;transform:translateX(-50%) scale(1)} }
+@keyframes toastSlide { from{opacity:0;transform:translateX(-50%) translateY(-12px) scale(0.9)} to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)} }
 
 /* ─── HERO ───────────────────────────────────── */
 .hero { position: relative; height: 240px; overflow: hidden; background: #111; flex-shrink: 0; }
@@ -795,7 +797,7 @@
   .skl-img  { height: 110px; }
 
   /* Toast */
-  .mp-toast { position: fixed !important; bottom: 76px !important; top: auto !important; left: 50%; transform: translateX(-50%); width: auto; max-width: calc(100vw - 32px); font-size: 13px; padding: 10px 20px; z-index: 250; }
+  .mp-toast { position: fixed !important; bottom: 76px !important; top: auto !important; left: 50%; transform: translateX(-50%); width: auto; max-width: calc(100vw - 32px); font-size: 13px; padding: 10px 20px; z-index: 9999; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
 
   /* Modals → bottom sheets */
   .imdl-overlay { padding: 0; align-items: flex-end; }
@@ -885,3 +887,95 @@
 .mobile-bottom-nav { display: none; }
 .mobile-cart-drawer { display: none; }
 .mobile-cart-backdrop { display: none; }
+
+/* ─── UNIFIED BAR ──────────────────────────── */
+.unified-bar { background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+
+/* ─── VEG / NON-VEG FILTER ─────────────────── */
+.veg-filter-btns { display: flex; gap: 4px; }
+.veg-filter-btn {
+  padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  border: 1.5px solid var(--border); background: var(--bg3); color: var(--txt2);
+  cursor: pointer; transition: all 150ms; font-family: 'DM Sans', sans-serif;
+  white-space: nowrap;
+}
+.veg-filter-btn:hover { border-color: #F5A623; }
+.veg-filter-btn--veg.veg-filter-btn--on   { background: #dcfce7; border-color: #22c55e; color: #15803d; }
+.veg-filter-btn--nonveg.veg-filter-btn--on { background: #fee2e2; border-color: #ef4444; color: #b91c1c; }
+.veg-filter-btn--on:not(.veg-filter-btn--veg):not(.veg-filter-btn--nonveg) { background: #F5A623; border-color: #F5A623; color: #1A1100; }
+
+/* ─── VEG DOT ON CARD ──────────────────────── */
+.mc__name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.mc__veg-dot  {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  border: 1.5px solid rgba(0,0,0,0.15);
+}
+
+/* Mobile veg filter */
+@media (max-width: 768px) {
+  .veg-filter-btns { gap: 3px; }
+  .veg-filter-btn  { font-size: 11px; padding: 4px 8px; }
+  .mc__veg-dot     { width: 8px; height: 8px; }
+}
+
+/* Dark mode */
+[data-theme="dark"] .unified-bar { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .veg-filter-btn { background: var(--bg3); border-color: var(--border); color: var(--txt2); }
+
+/* ─── OUTLET CHANGE HINT ───────────────────── */
+.tb-outlet-change-hint {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 600; color: var(--primary);
+  background: var(--primary-dim); padding: 3px 8px; border-radius: 999px;
+  white-space: nowrap; margin-left: 6px; opacity: 0.85;
+  transition: all 150ms;
+}
+.tb-outlet:hover .tb-outlet-change-hint { opacity: 1; background: var(--primary); color: #fff; }
+[data-theme="dark"] .tb-outlet-change-hint { color: var(--gold); background: var(--gold-dim); }
+[data-theme="dark"] .tb-outlet:hover .tb-outlet-change-hint { background: var(--gold); color: #1A1100; }
+
+/* ─── ACTIVE ALLERGEN BUTTON ───────────────── */
+.tb-icon-btn--active { background: rgba(239,68,68,0.12) !important; border-color: #ef4444 !important; }
+.tb-icon-btn--active .tb-cart-badge { background: #ef4444; }
+/* ─── TOSS ANIMATION EXTRAS ────────────────── */
+.tb-cart-btn { position: relative; overflow: visible; }
+
+/* Sparkle burst on cart when item lands */
+@keyframes cartSparkle {
+  0%   { box-shadow: 0 0 0 0 rgba(245,166,35,0.6); }
+  50%  { box-shadow: 0 0 0 12px rgba(245,166,35,0.0); }
+  100% { box-shadow: 0 0 0 0 rgba(245,166,35,0.0); }
+}
+
+/* Card shimmer when add is clicked */
+@keyframes cardAddShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.mc--adding .mc__img::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(245,166,35,0.3) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: cardAddShimmer 0.6s ease-out;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Green checkmark flash on card after adding */
+@keyframes addedFlash {
+  0%   { opacity: 0; transform: scale(0.3); }
+  40%  { opacity: 1; transform: scale(1.2); }
+  100% { opacity: 0; transform: scale(1); }
+}
+.mc__added-flash {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px; height: 48px; border-radius: 50%;
+  background: rgba(34,197,94,0.9);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 22px; font-weight: 700;
+  animation: addedFlash 0.7s ease-out forwards;
+  pointer-events: none; z-index: 10;
+  box-shadow: 0 4px 20px rgba(34,197,94,0.4);
+}

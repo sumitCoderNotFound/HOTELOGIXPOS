@@ -38,6 +38,27 @@ export default function History() {
   const [orders, setOrders]           = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
+  // Reorder: load items from a past order into cart and go to cart page
+  function reorderToCart(order) {
+    const items = Array.isArray(order.items) ? order.items : [];
+    if (!items.length) return;
+    const cartItems = items.map(it => ({
+      id: it.id || it.productId || `reorder-${Date.now()}-${Math.random()}`,
+      name: it.name || it.productName || 'Item',
+      price: Number(it.price) || 0,
+      image: it.image || '',
+      quantity: Number(it.quantity) || 1,
+      customization: it.customization || {},
+      outlet: it.outlet || localStorage.getItem('selectedOutlet') || '',
+      outletName: it.outletName || '',
+      pos_id: it.pos_id || '',
+      requiresAdvancePayment: it.requiresAdvancePayment || false,
+      taxes: it.taxes || []
+    }));
+    localStorage.setItem('cartData', JSON.stringify(cartItems));
+    navigate('/cart');
+  }
+
   useEffect(() => {
     const parsed = safeParse(localStorage.getItem('orderHistory'), []);
     parsed.sort((a,b) => (Date.parse(b?.timestamp||'')||0) - (Date.parse(a?.timestamp||'')||0));
@@ -113,6 +134,9 @@ export default function History() {
                   <span className="hist-card-time">{dt(o.timestamp)}</span>
                   <span className="hist-card-total">{fc(o.total)}</span>
                 </div>
+                <button className="hist-card-reorder" onClick={e => { e.stopPropagation(); reorderToCart(o); }}>
+                  🔄 Reorder / Modify
+                </button>
               </div>
             );
           })
@@ -141,6 +165,9 @@ export default function History() {
             </div>
             <div className="hist-sheet-body">
               <OrderSheet order={selectedOrder} fc={fc} dt={dt} statusColor={statusColor} />
+              <button className="hist-act-btn" style={{ width:'100%', marginTop: 12 }} onClick={() => { setSelectedOrder(null); reorderToCart(selectedOrder); }}>
+                🔄 Reorder / Modify This Order
+              </button>
             </div>
           </div>
         </>

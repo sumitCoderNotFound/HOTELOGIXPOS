@@ -1,286 +1,265 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Sidebar from '../components/Sidebar';
 import ThemeLangBar from '../components/ThemeLangBar';
-import { useLang } from '../context/LangContext';
+import { useTheme } from '../context/ThemeContext';
+import { getCurrencySymbol } from '../utils/session';
 import './Cart.css';
 
-// ── helpers (mirrors cart.js) ────────────────────────────────────────────────
-const safeJSONParse = (s, fb) => { try { return JSON.parse(s); } catch { return fb; } };
-
-function getCurrency() {
-  try { return safeJSONParse(localStorage.getItem('userData'), {})?.guest?.currency_symbol || '₹'; }
-  catch { return '₹'; }
-}
-function formatCurrency(n) { return `${getCurrency()} ${Number(n || 0).toFixed(2)}`; }
+/* ─── helpers ──────────────────────────────── */
+const safeJSON  = (s,fb) => { try{return JSON.parse(s);}catch{return fb;} };
+const currency  = () => getCurrencySymbol();
+const fmt       = n  => `${currency()} ${Number(n||0).toFixed(2)}`;
 
 function getCartData() {
-  const keys = ['cartData', 'CartData', 'cart', 'Cart', 'shoppingCart'];
-  for (const k of keys) {
-    const raw = localStorage.getItem(k)?.trim();
-    if (!raw || raw === 'null' || raw === 'undefined') continue;
-    const parsed = safeJSONParse(raw, []);
-    if (Array.isArray(parsed)) return parsed;
+  for (const k of ['cartData','CartData','cart']) {
+    const r = localStorage.getItem(k)?.trim();
+    if (r && r!=='null') { const p=safeJSON(r,[]); if(Array.isArray(p)) return p; }
   }
   return [];
 }
-function setCartData(arr) {
-  localStorage.setItem('cartData', JSON.stringify(Array.isArray(arr) ? arr : []));
-}
+function saveCartData(arr) { localStorage.setItem('cartData', JSON.stringify(arr)); }
 
-function sanitizeCart(items) {
+function sanitize(items) {
   if (!Array.isArray(items)) return [];
   return items.map(it => ({
-    id: it?.id ?? '',
-    name: it?.name ?? 'Item',
-    image: it?.image ?? '',
-    description: it?.description ?? '',
-    category: it?.category ?? '',
-    quantity: Number(it?.quantity) || 1,
-    price: Number(it?.price) || 0,
-    customization: it?.customization || {},
-    outlet: it?.outlet ?? '',
-    outletName: it?.outletName ?? '',
-    pos_id: it?.pos_id ?? '',
-    requiresAdvancePayment: !!it?.requiresAdvancePayment,
-    paymentStatus: it?.paymentStatus || '',
-    paidAmount: Number(it?.paidAmount) || 0,
-    taxes: Array.isArray(it?.taxes) ? it.taxes : []
+    id: it?.id??'', name: it?.name??'Item', image: it?.image??'',
+    category: it?.category??'', quantity: Number(it?.quantity)||1,
+    price: Number(it?.price)||0, customization: it?.customization||{},
+    outlet: it?.outlet??'', outletName: it?.outletName??'',
+    pos_id: it?.pos_id??'', requiresAdvancePayment: !!it?.requiresAdvancePayment,
+    taxes: Array.isArray(it?.taxes)?it.taxes:[]
   }));
 }
 
-function getCustomizationText(c) {
-  if (!c) return '';
-  const p = [];
-  if (c.spiceLevel) p.push(`Spice: ${c.spiceLevel}`);
-  if (c.specialInstructions) p.push(c.specialInstructions);
-  if (c.additionalNotes) p.push(c.additionalNotes);
-  return p.join(' • ');
-}
-
-function computeItemTaxAmounts(item) {
-  const price = Number(item.price) || 0;
-  const breakdown = (item.taxes || []).map(t => ({
-    name: t?.taxName || t?.taxShortName || 'Tax',
-    rate: Number(t?.modifiedTaxRate ?? t?.taxRate) || 0,
-    amount: +(price * (Number(t?.modifiedTaxRate ?? t?.taxRate) || 0) / 100).toFixed(2)
-  }));
-  return { breakdown, total: +breakdown.reduce((s, x) => s + x.amount, 0).toFixed(2) };
-}
-
-function getCartTotals(cart) {
+function computeTotals(cart) {
   let subtotal = 0;
   const taxMap = new Map();
   cart.forEach(item => {
-    const qty = Number(item.quantity) || 1;
-    subtotal += (Number(item.price) || 0) * qty;
-    const { breakdown } = computeItemTaxAmounts(item);
-    breakdown.forEach(t => {
-      const key = `${t.name}|${t.rate}`;
-      taxMap.set(key, +((taxMap.get(key) || 0) + t.amount * qty).toFixed(2));
+    const qty = Number(item.quantity)||1;
+    subtotal += (Number(item.price)||0)*qty;
+    (item.taxes||[]).forEach(t => {
+      const rate = Number(t?.modifiedTaxRate??t?.taxRate)||0;
+      const name = t?.taxName||t?.taxShortName||'Tax';
+      const key  = `${name}|${rate}`;
+      const amt  = +((Number(item.price)||0)*rate/100*qty).toFixed(2);
+      taxMap.set(key, +((taxMap.get(key)||0)+amt).toFixed(2));
     });
   });
-  const taxesBreakdown = [...taxMap.entries()].map(([k, amount]) => {
-    const [name, rateStr] = k.split('|');
-    return { name, rate: Number(rateStr), amount };
-  }).sort((a, b) => a.name.localeCompare(b.name));
-  const taxesTotal = +taxesBreakdown.reduce((s, x) => s + x.amount, 0).toFixed(2);
-  return { subtotal: +subtotal.toFixed(2), deliveryFee: 0, taxesTotal, total: +(subtotal + taxesTotal).toFixed(2), taxesBreakdown };
+  const taxBreakdown = [...taxMap.entries()].map(([k,a])=>{const[n,r]=k.split('|');return{name:n,rate:Number(r),amount:a};});
+  const taxTotal = +taxBreakdown.reduce((s,x)=>s+x.amount,0).toFixed(2);
+  return { subtotal:+subtotal.toFixed(2), taxBreakdown, taxTotal, total:+(subtotal+taxTotal).toFixed(2) };
 }
 
 function generateOrderId() {
-  return `HX${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+  return `HX${Date.now().toString().slice(-6)}${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
 }
 
-function groupItemsByOutlet(cart) {
-  const grouped = {};
-  cart.forEach(item => {
-    const key = item.outlet || 'unknown';
-    if (!grouped[key]) grouped[key] = { outletId: item.outlet, outletName: item.outletName || `Outlet ${item.outlet}`, pos_id: item.pos_id, items: [] };
-    grouped[key].items.push(item);
-  });
-  return Object.values(grouped);
+/* ─── Recommendation Card ──────────────────── */
+function RecommendationCard({ item, onAdd, inCart }) {
+  const cur = currency();
+  return (
+    <div className="rec-card">
+      <div className="rec-card__img" style={{ backgroundImage: item.image?`url('${item.image}')`:'' }}>
+        {!item.image && <span>🍽️</span>}
+        {inCart && <span className="rec-card__badge">✓</span>}
+      </div>
+      <div className="rec-card__body">
+        <div className="rec-card__name">{item.name}</div>
+        <div className="rec-card__price">{cur}{item.price}</div>
+      </div>
+      <button className="rec-card__btn" onClick={() => onAdd(item)} disabled={inCart}>
+        {inCart ? '✓' : '+'}
+      </button>
+    </div>
+  );
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+/* ─── CART PAGE ────────────────────────────── */
 export default function Cart() {
-  const navigate = useNavigate();
-  const [cart, setCart] = useState([]);
+  const navigate    = useNavigate();
+  const { isDark }  = useTheme();
+  const [cart, setCart]         = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
 
   useEffect(() => {
-    setCart(sanitizeCart(getCartData()));
+    document.title = 'Cart — POS';
+    setCart(sanitize(getCartData()));
+    // Load menu items for recommendations
+    const outlet = safeJSON(localStorage.getItem('outlet'),{});
+    if (outlet?.menuItems) setMenuItems(outlet.menuItems);
   }, []);
 
-  function syncCart(newCart) {
-    setCart(newCart);
-    setCartData(newCart);
+  function sync(nc) { setCart(nc); saveCartData(nc); }
+
+  function updateQty(idx, delta) {
+    const nc = cart.map((c,i) => i===idx ? {...c, quantity: c.quantity+delta} : c).filter(c=>c.quantity>0);
+    sync(nc);
   }
 
-  function updateQuantity(index, change) {
-    const updated = [...cart];
-    updated[index] = { ...updated[index], quantity: updated[index].quantity + change };
-    if (updated[index].quantity <= 0) { removeFromCart(index); return; }
-    syncCart(updated);
-  }
-
-  function removeFromCart(index) {
-    const updated = cart.filter((_, i) => i !== index);
-    syncCart(updated);
-  }
+  function remove(idx) { sync(cart.filter((_,i)=>i!==idx)); }
 
   function clearCart() {
-    if (!cart.length) { alert('Cart is already empty!'); return; }
-    if (window.confirm('Are you sure you want to clear your cart?')) syncCart([]);
+    if (!cart.length) return;
+    if (window.confirm('Clear all items?')) sync([]);
+  }
+
+  function addRecommendation(item) {
+    const nc = [...cart];
+    const ex = nc.find(c => String(c.id)===String(item.id));
+    if (ex) { ex.quantity++; } else {
+      const o = safeJSON(localStorage.getItem('outlet'),{});
+      nc.push({
+        id:item.id, name:item.name, price:item.price, image:item.image,
+        category:item.category||'', quantity:1, customization:{},
+        outlet:localStorage.getItem('selectedOutlet')||'',
+        outletName:o.name||'', pos_id:o.pos_id||'',
+        requiresAdvancePayment:item.requiresAdvancePayment||false,
+        taxes:item.taxes||[]
+      });
+    }
+    sync(nc);
   }
 
   function placeOrder() {
-    if (!cart.length) { alert('Your cart is empty!'); return; }
-    const { subtotal, deliveryFee, taxesTotal, total, taxesBreakdown } = getCartTotals(cart);
-    const userRaw = safeJSONParse(localStorage.getItem('userData'), {});
-    const orderData = {
-      orderId: generateOrderId(),
-      items: [...cart],
-      subtotal, deliveryFee,
-      taxes: taxesTotal, taxesBreakdown,
-      total, paymentMethod: 'none', payLaterAmount: 0, paidAmount: total,
-      timestamp: new Date().toISOString(), status: 'pending',
+    if (!cart.length) return;
+    const userRaw = safeJSON(localStorage.getItem('userData'),{});
+    const totals  = computeTotals(cart);
+    const order   = {
+      orderId: generateOrderId(), items:[...cart],
+      subtotal: totals.subtotal, taxes: totals.taxTotal,
+      taxesBreakdown: totals.taxBreakdown, deliveryFee: 0,
+      total: totals.total, paymentMethod:'none',
+      payLaterAmount:0, paidAmount:totals.total,
+      timestamp: new Date().toISOString(), status:'pending',
       userData: {
         ...userRaw,
-        selectedShift:  localStorage.getItem('selectedShift')  || '',
-        selectedOutlet: localStorage.getItem('selectedOutlet') || '',
-        hotelId:        localStorage.getItem('hotel_id')       || userRaw?.hotelId || '',
-        roomNumber:     localStorage.getItem('roomNumber')     || '',
-        roomId:         userRaw?.guest?.guestRoomId || userRaw?.guest?.room || localStorage.getItem('roomNumber') || '',
+        selectedShift:  localStorage.getItem('selectedShift')||'',
+        selectedOutlet: localStorage.getItem('selectedOutlet')||'',
+        hotelId:        localStorage.getItem('hotel_id')||'',
+        roomNumber:     localStorage.getItem('roomNumber')||'',
+        roomId:         userRaw?.guest?.guestRoomId||localStorage.getItem('roomNumber')||'',
       }
     };
-    localStorage.setItem('currentOrder', JSON.stringify(orderData));
+    localStorage.setItem('currentOrder', JSON.stringify(order));
     navigate('/success');
   }
 
-  const totals = getCartTotals(cart);
-  const outletGroups = groupItemsByOutlet(cart);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { t } = useLang();
+  const totals = computeTotals(cart);
+  const cartIds = new Set(cart.map(c => String(c.id)));
+  // Recommendations: items not in cart, from same outlet
+  const recommendations = menuItems.filter(m => !cartIds.has(String(m.id))).slice(0, 8);
 
   return (
-    <div className="container">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-
-      {/* Header */}
-      <div className="header">
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <button className="page-hamburger" onClick={() => setSidebarOpen(true)}><span/><span/><span/></button>
-          <button className="back-btn" onClick={() => navigate('/menu')}>←</button>
-        </div>
-        <img src="https://www.hotelogix.com/wp-content/themes/hotelogix/images/hotelogix-logo.svg" alt="HotelOGIX" className="header-logo" style={{ width:46 }} />
-        <div className="nav-icons">
+    <div className={`cart-page-wrap ${isDark?'dark':''}`}>
+      {/* ── HEADER ── */}
+      <header className="cart-hdr">
+        <button className="cart-hdr__back" onClick={() => navigate('/menu')}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15,18 9,12 15,6"/></svg>
+        </button>
+        <img src="https://www.hotelogix.com/wp-content/themes/hotelogix/images/hotelogix-logo.svg" alt="HotelOGIX" className="cart-hdr__logo" onError={e=>e.target.style.display='none'} />
+        <h1 className="cart-hdr__title">My Cart</h1>
+        <div className="cart-hdr__right">
           <ThemeLangBar compact={true} />
-          <button className="nav-icon" onClick={() => navigate('/history')} title="History">📋</button>
+          <button className="cart-hdr__hist" onClick={() => navigate('/history')} title="Order History">📋</button>
         </div>
-      </div>
+      </header>
 
-      <div className="cart-page">
-        <h2 className="page-title">{t('my_cart')}</h2>
-
-        {/* Cart Items */}
-        <div className="cart-items-container">
-          {!cart.length ? (
-            <div className="empty-cart">
-              <div className="empty-cart-icon">🛒</div>
-              <h3>Your cart is empty</h3>
-              <p>Add some delicious items to get started!</p>
-              <button className="continue-shopping-btn" onClick={() => navigate('/menu')}>Continue Shopping</button>
+      <div className="cart-body">
+        {/* ── CART ITEMS ── */}
+        {cart.length === 0 ? (
+          <div className="cart-empty">
+            <div className="cart-empty__icon">🛒</div>
+            <h3>Your cart is empty</h3>
+            <p>Go back to the menu and add some items</p>
+            <button className="cart-empty__btn" onClick={() => navigate('/menu')}>← Back to Menu</button>
+          </div>
+        ) : (
+          <>
+            <div className="cart-section-title">
+              <span>🛒 Your Items</span>
+              <span className="cart-item-count">{cart.reduce((s,i)=>s+i.quantity,0)} items</span>
             </div>
-          ) : (
-            outletGroups.map(group => (
-              <div key={group.outletId}>
-                <div className="outlet-section-header">
-                  <div className="outlet-header-content">
-                    <h3>📍 {group.outletName}</h3>
-                    <span className="outlet-item-count">{group.items.length} item(s)</span>
+
+            <div className="cart-items">
+              {cart.map((item, idx) => (
+                <div key={`${item.id}-${idx}`} className="cart-item">
+                  <div className="cart-item__img" style={{ backgroundImage: item.image?`url('${item.image}')`:'' }}>
+                    {!item.image && <span>🍽️</span>}
+                  </div>
+                  <div className="cart-item__info">
+                    <div className="cart-item__name">{item.name}</div>
+                    {item.category && <div className="cart-item__cat">📂 {item.category}</div>}
+                    {item.outletName && <div className="cart-item__outlet">📍 {item.outletName}</div>}
+                    {(item.customization?.notes||item.customization?.spice) && (
+                      <div className="cart-item__custom">
+                        {item.customization.spice && <span>🌶 {item.customization.spice}</span>}
+                        {item.customization.notes && <span>📝 {item.customization.notes}</span>}
+                      </div>
+                    )}
+                    {/* Taxes per item */}
+                    {item.taxes?.length > 0 && (
+                      <div className="cart-item__taxes">
+                        {item.taxes.map((tx,ti) => {
+                          const rate = Number(tx?.modifiedTaxRate??tx?.taxRate)||0;
+                          const amt  = (Number(item.price)||0)*rate/100*item.quantity;
+                          return <span key={ti} className="cart-item__tax-pill">{tx.taxName} {rate}% = {currency()}{amt.toFixed(2)}</span>;
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="cart-item__right">
+                    <div className="cart-item__price">{fmt(item.price * item.quantity)}</div>
+                    <div className="cart-item__each">{fmt(item.price)} each</div>
+                    <div className="cart-item__qty">
+                      <button onClick={() => updateQty(idx,-1)}>−</button>
+                      <span>{item.quantity}</span>
+                      <button onClick={() => updateQty(idx,1)}>+</button>
+                    </div>
+                    <button className="cart-item__remove" onClick={() => remove(idx)}>✕ Remove</button>
                   </div>
                 </div>
-                <div className="outlet-items-container">
-                  {group.items.map(item => {
-                    const idx = cart.indexOf(item);
-                    const customText = getCustomizationText(item.customization);
-                    const { breakdown, total: perUnitTax } = computeItemTaxAmounts(item);
-                    const qty = Number(item.quantity) || 1;
+              ))}
+            </div>
 
-                    return (
-                      <div key={`${item.id}-${idx}`} className={`cart-item ${item.requiresAdvancePayment ? 'advance-payment-item' : ''}`}>
-                        <div className="cart-item-image" style={{ backgroundImage: `url('${item.image || ''}')` }} />
-                        <div className="cart-item-details">
-                          <div className="cart-item-name">{item.name}</div>
-                          <div className="cart-item-price">{formatCurrency(item.price)} each</div>
-                          {customText && <div className="cart-item-customization">{customText}</div>}
-                          {breakdown.length > 0 && (
-                            <div className="cart-item-taxes">
-                              <div style={{ fontWeight: 600, marginTop: 6 }}>Taxes</div>
-                              {breakdown.map((t, ti) => (
-                                <div key={ti} className="cart-item-tax-row">
-                                  <span>{t.name} ({t.rate}%)</span>
-                                  <span>{getCurrency()} {(t.amount * qty).toFixed(2)}</span>
-                                </div>
-                              ))}
-                              <div className="cart-item-tax-total">
-                                <span>Total Tax</span>
-                                <span>{getCurrency()} {(perUnitTax * qty).toFixed(2)}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <div className="cart-item-controls">
-                          <div className="quantity-controls">
-                            <button className="quantity-btn" onClick={() => updateQuantity(idx, -1)} disabled={item.quantity <= 1}>-</button>
-                            <span className="quantity-display">{item.quantity}</span>
-                            <button className="quantity-btn" onClick={() => updateQuantity(idx, 1)}>+</button>
-                          </div>
-                          <button className="remove-btn" onClick={() => removeFromCart(idx)}>Remove</button>
-                        </div>
-                      </div>
-                    );
-                  })}
+            {/* ── ORDER SUMMARY ── */}
+            <div className="cart-summary">
+              <h3 className="cart-summary__title">💰 Order Summary</h3>
+              <div className="cart-summary__row"><span>Subtotal ({cart.reduce((s,i)=>s+i.quantity,0)} items)</span><span>{fmt(totals.subtotal)}</span></div>
+              {totals.taxBreakdown.map((tb,i) => (
+                <div key={i} className="cart-summary__row cart-summary__row--tax">
+                  <span>{tb.name} ({tb.rate}%)</span><span>{fmt(tb.amount)}</span>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
+              ))}
+              {!totals.taxBreakdown.length && <div className="cart-summary__row cart-summary__row--tax"><span>Taxes</span><span>{fmt(0)}</span></div>}
+              <div className="cart-summary__row"><span>Delivery Fee</span><span>{fmt(0)}</span></div>
+              <div className="cart-summary__row cart-summary__row--tax-total"><span>Total Taxes</span><span>{fmt(totals.taxTotal)}</span></div>
+              <div className="cart-summary__row cart-summary__row--total"><span>Total Amount</span><span>{fmt(totals.total)}</span></div>
 
-        {/* Order Summary */}
-        {cart.length > 0 && (
-          <div className="order-summary">
-            <h3>Order Summary</h3>
-            <div className="summary-row"><span>Subtotal</span><span>{formatCurrency(totals.subtotal)}</span></div>
-            {totals.taxesBreakdown.map((tb, i) => (
-              <div key={i} className="summary-row" style={{ fontSize: '0.95rem' }}>
-                <span>{tb.name} ({tb.rate}%)</span>
-                <span>{formatCurrency(tb.amount)}</span>
-              </div>
-            ))}
-            {!totals.taxesBreakdown.length && <div className="summary-row"><span>Taxes</span><span>{formatCurrency(0)}</span></div>}
-            <div className="summary-row"><span>Delivery Fee</span><span>{formatCurrency(0)}</span></div>
-            <div className="summary-row" style={{ fontWeight: 600 }}><span>Total Taxes</span><span>{formatCurrency(totals.taxesTotal)}</span></div>
-            <div className="summary-row total"><span>Total Amount</span><span>{formatCurrency(totals.total)}</span></div>
+              <button className="cart-place-btn" onClick={placeOrder}>
+                Place Order — {fmt(totals.total)}
+              </button>
+              <button className="cart-clear-btn" onClick={clearCart}>🗑 Clear Cart</button>
+            </div>
+          </>
+        )}
 
-            <button className="place-order-btn" onClick={placeOrder}>
-              Place Order — {formatCurrency(totals.total)}
-            </button>
-
-            <div className="order-actions">
-              <button className="action-btn secondary" onClick={() => navigate('/preferences')}>🛒 Continue Shopping</button>
-              <button className="action-btn secondary" onClick={clearCart}>🗑️ Clear Cart</button>
+        {/* ── RECOMMENDATIONS ── */}
+        {recommendations.length > 0 && (
+          <div className="cart-recs">
+            <div className="cart-recs__title">
+              <span>✨ You Might Also Like</span>
+              <button className="cart-recs__menu-btn" onClick={() => navigate('/menu')}>View Full Menu →</button>
+            </div>
+            <div className="cart-recs__grid">
+              {recommendations.map(item => (
+                <RecommendationCard key={item.id} item={item}
+                  inCart={cartIds.has(String(item.id))}
+                  onAdd={addRecommendation}
+                />
+              ))}
             </div>
           </div>
         )}
-      </div>
-
-      {/* Loading overlay */}
-      <div className="loading-overlay" id="loadingOverlay" style={{ display: 'none' }}>
-        <div className="loading-content">
-          <div className="loading-spinner" />
-          <p>Processing...</p>
-        </div>
       </div>
     </div>
   );
