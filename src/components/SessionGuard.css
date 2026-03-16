@@ -27,3 +27,19 @@
 .sg-btn--primary:hover { transform: translateY(-2px); }
 .sg-btn--ghost   { background: var(--bg3,#f3f4f6); color: var(--txt2,#4b5563); border: 1px solid var(--border,#e5e7eb); }
 .sg-btn--ghost:hover { background: var(--bg4,#e5e7eb); }
+/* ─── QR Hint box ──────────────────────────── */
+.sg-qr-hint {
+  background: rgba(245,166,35,0.1);
+  border: 1px solid rgba(245,166,35,0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px; font-weight: 600;
+  color: #b45309;
+  text-align: center;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+[data-theme="dark"] .sg-qr-hint {
+  background: rgba(245,166,35,0.08);
+  color: #F5A623;
+}

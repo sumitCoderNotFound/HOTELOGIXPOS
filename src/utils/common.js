@@ -1,6 +1,14 @@
 // Enhanced Common JavaScript Functions - mirrors original common.js
 
-export const SESSION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+// Session timeout: 5 minutes for room login, 20 minutes for table login
+export function getSessionTimeoutMs() {
+  try {
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    if (userData.isTableBased) return 20 * 60 * 1000; // 20 minutes for table
+  } catch {}
+  return 5 * 60 * 1000; // 5 minutes for room
+}
+export const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // default fallback
 export const ACTIVITY_CHECK_INTERVAL = 10 * 1000; // Check every 10 seconds
 
 export function updateLastActivity() {
@@ -26,8 +34,9 @@ export function checkSessionTimeout() {
   const lastActivity = new Date(sessionData.lastActivity);
   const now = new Date();
   const inactiveTime = now - lastActivity;
+  const timeout = getSessionTimeoutMs();
 
-  if (inactiveTime > SESSION_TIMEOUT_MS) {
+  if (inactiveTime > timeout) {
     performAutoLogout('Session expired due to inactivity');
     return false;
   }

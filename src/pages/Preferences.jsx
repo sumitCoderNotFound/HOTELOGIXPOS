@@ -48,6 +48,7 @@ export default function Preferences() {
     const tableId     = params.get('table_id');
     const hotelId     = params.get('hotel_id');
     const hotelName   = params.get('hotelName') || 'Hotel';
+    const urlOutletId = params.get('outlet_id') || params.get('outlet');
 
     hotelIdRef.current    = hotelId || localStorage.getItem('hotel_id') || '1';
     roomNumberRef.current = roomNumber || localStorage.getItem('roomNumber') || '';
@@ -75,12 +76,13 @@ export default function Preferences() {
     if (tableId) {
       localStorage.setItem('tableId', tableId);
       localStorage.removeItem('roomNumber');
+      if (urlOutletId) localStorage.setItem('urlOutletId', urlOutletId);
     }
     if (hotelName) localStorage.setItem('hotelName', hotelName);
 
     // Table-based flow
     if (tableId) {
-      handleTableFlow(tableId, hotelId);
+      handleTableFlow(tableId, hotelId, urlOutletId);
       return;
     }
 
@@ -107,43 +109,97 @@ export default function Preferences() {
 
   // ── mirrors fetchTableInfo ────────────────────────────────────────────
   async function fetchTableInfo(tableId, hotelId) {
-    const resp = await fetch(`${API_BASE}/api/table?hotel_id=${hotelId}&pms_table_id=${tableId}`);
-    const data = await resp.json();
-    if (data.tables && data.tables.length > 0) {
-      localStorage.setItem('tableInfo', JSON.stringify(data.tables[0]));
-      return data.tables[0];
+    try {
+      const resp = await fetch(`${API_BASE}/api/table?hotel_id=${hotelId}&pms_table_id=${tableId}`);
+      if (!resp.ok) {
+        console.warn('fetchTableInfo HTTP error:', resp.status);
+        // If rate limited, wait and retry once
+        if (resp.status === 429) {
+          await new Promise(r => setTimeout(r, 2000));
+          const retry = await fetch(`${API_BASE}/api/table?hotel_id=${hotelId}&pms_table_id=${tableId}`);
+          if (retry.ok) {
+            const retryData = await retry.json().catch(() => null);
+            if (retryData?.tables?.length > 0) {
+              localStorage.setItem('tableInfo', JSON.stringify(retryData.tables[0]));
+              return retryData.tables[0];
+            }
+          }
+        }
+        return null;
+      }
+      const data = await resp.json().catch(() => null);
+      if (data?.tables && data.tables.length > 0) {
+        localStorage.setItem('tableInfo', JSON.stringify(data.tables[0]));
+        return data.tables[0];
+      }
+      return null;
+    } catch (err) {
+      console.warn('fetchTableInfo error:', err.message);
+      return null;
     }
-    return null;
   }
 
-  // ── mirrors handleTableLogin ──────────────────────────────────────────
-  async function handleTableFlow(tableId, hotelId) {
+  // ── Table login flow ──────────────────────────────────────────
+  async function handleTableFlow(tableId, hotelId, urlOutletId) {
     try {
-      const tableInfo = await fetchTableInfo(tableId, hotelId);
-      if (!tableInfo) {
-        setRoomInfoMsg('Invalid table information. Please scan the QR code again.');
-        setLoading(false);
+      // Check if we already have a valid session from a previous table login
+      const existingUser = JSON.parse(localStorage.getItem('userData') || '{}');
+      if (existingUser.token && existingUser.isTableBased && existingUser.tableId === tableId) {
+        // Already logged in with this table — skip login, go to outlet selection
+        const outId = urlOutletId || existingUser.outletId;
+        if (outId) {
+          localStorage.setItem('selectedOutlet', outId);
+          setSelectedOutlet(outId);
+          setShowBackBtn(false);
+          loadOutletPreferences(outId, existingUser.outletName || 'Outlet', hotelId);
+        } else {
+          loadOutletsByHotel(hotelId, existingUser.token);
+        }
         return;
       }
+
+      // Try to get table info (may fail due to rate limiting)
+      let tableInfo = await fetchTableInfo(tableId, hotelId);
+      
+      // If table API failed, build minimal info from URL params
+      if (!tableInfo) {
+        tableInfo = {
+          table_name: '',
+          table_number: '',
+          outlet_id: urlOutletId || '',
+        };
+      }
+      
+      // If outlet_id came from URL, merge it
+      if (urlOutletId) {
+        tableInfo.outlet_id = urlOutletId;
+      }
+
       await handleTableLogin(tableId, hotelId, tableInfo);
     } catch (err) {
       console.error('Table flow error:', err);
-      setRoomInfoMsg('Unable to verify table. Please try again.');
+      // If login fails, show error but don't block — let user retry
+      setRoomInfoMsg('Unable to verify table. Please try again or scan the QR code.');
       setLoading(false);
     }
   }
 
   async function handleTableLogin(tableId, hotelId, tableInfo) {
-    const resp   = await fetch(`${API_BASE}/api/guests/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tableId, hotelId })
-    });
-    const result = await resp.json();
-    if (!resp.ok) throw new Error(result?.message || 'Table login failed.');
+    let resp, result;
+    try {
+      resp = await fetch(`${API_BASE}/api/guests/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId, hotelId })
+      });
+      result = await resp.json().catch(() => ({}));
+    } catch (err) {
+      throw new Error('Network error. Please check your connection and try again.');
+    }
+    if (!resp.ok) throw new Error(result?.message || 'Table login failed. Please try again.');
 
     const token = result?.token || result?.authToken || result?.data?.token || result?.jwt;
-    if (!token) throw new Error('Authentication failed.');
+    if (!token) throw new Error('Authentication failed. Please try again.');
 
     const userPayload = {
       tableId, tableNumber: tableInfo.table_name || tableInfo.table_number,
@@ -195,7 +251,7 @@ export default function Preferences() {
     setLoading(true);
     try {
       const params = new URLSearchParams(window.location.search);
-      const urlOutletParam = params.get('outlet');
+      const urlOutletParam = params.get('outlet_id') || params.get('outlet');
 
       const resp = await authFetch(`${API_BASE}/api/app/hotels/${hid}/outlets`);
       const data = await resp.json();

@@ -309,26 +309,65 @@ function RightCart({ cart, setCart, currency, navigate, t, isOpen, onToggle, car
             <small>{t('add_something')}</small>
           </div>
         ) : (
-          cart.map(item => (
-            <div key={item.id} className="rcp__item">
-              <div className="rcp__item-info">
-                <div className="rcp__item-name">{item.name}</div>
-                <div className="rcp__item-price">{currency} {item.price}</div>
-                {item.customization?.notes && (
-                  <div className="rcp__item-note">📝 {item.customization.notes}</div>
-                )}
-                {item.customization?.spice && (
-                  <div className="rcp__item-note">🌶 {item.customization.spice}</div>
-                )}
+          cart.map(item => {
+            const dietType = (item.food_type||item.diet_type||'').toLowerCase();
+            const isVeg = dietType === 'veg' || dietType === 'vegetarian' || (item.tags||[]).some(t=>(t.toLowerCase().includes('veg'))&&!t.toLowerCase().includes('non'));
+            const isNonVeg = dietType === 'nonveg' || dietType === 'non-veg' || (item.tags||[]).some(t=>t.toLowerCase().includes('nonveg'));
+            const lineTotal = (item.price * item.quantity);
+            return (
+              <div key={item.id} className="rcp__card">
+                {/* Image + diet indicator */}
+                <div className="rcp__card-img" style={{ backgroundImage: item.image ? `url('${item.image}')` : 'none' }}>
+                  {!item.image && <span className="rcp__card-ph">🍽️</span>}
+                  {(isVeg || isNonVeg) && (
+                    <span className={`rcp__card-diet ${isVeg ? 'rcp__card-diet--veg' : 'rcp__card-diet--nv'}`}>
+                      {isVeg ? '🟢' : '🔴'}
+                    </span>
+                  )}
+                </div>
+                {/* Info */}
+                <div className="rcp__card-body">
+                  <div className="rcp__card-name">{item.name}</div>
+                  <div className="rcp__card-meta">
+                    {item.nutrition?.protein && <span>💪 {item.nutrition.protein}</span>}
+                    {item.nutrition?.carbs && <span>🍞 {item.nutrition.carbs}</span>}
+                    {item.nutrition?.fat && <span>🥑 {item.nutrition.fat}</span>}
+                    {item.nutrition?.calories != null && <span>🔥 {item.nutrition.calories}cal</span>}
+                  </div>
+                  {/* Allergens */}
+                  {item.allergens?.length > 0 && (
+                    <div className="rcp__card-allergens">
+                      {item.allergens.slice(0,3).map(a => (
+                        <span key={a.id} className="rcp__card-allergen" style={{background:a.color||'#ef4444'}} title={a.name}>
+                          {a.icon}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Customization */}
+                  {(item.customization?.notes || item.customization?.spice) && (
+                    <div className="rcp__card-custom">
+                      {item.customization.spice && <span>🌶 {item.customization.spice}</span>}
+                      {item.customization.notes && <span>📝 {item.customization.notes}</span>}
+                    </div>
+                  )}
+                  {/* Price + controls */}
+                  <div className="rcp__card-bottom">
+                    <div className="rcp__card-price">
+                      <span className="rcp__card-total">{currency} {lineTotal}</span>
+                      {item.quantity > 1 && <span className="rcp__card-each">{currency}{item.price} × {item.quantity}</span>}
+                    </div>
+                    <div className="rcp__card-ctrls">
+                      <button className="rcp__ctrl" onClick={e => changeQty(item.id, -1, e.currentTarget)}>−</button>
+                      <span className="rcp__qty">{item.quantity}</span>
+                      <button className="rcp__ctrl" onClick={() => changeQty(item.id, 1)}>+</button>
+                      <button className="rcp__del" onClick={e => changeQty(item.id, -999, e.currentTarget)}>✕</button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="rcp__item-controls">
-                <button className="rcp__ctrl" onClick={e => changeQty(item.id, -1, e.currentTarget)}>−</button>
-                <span className="rcp__qty">{item.quantity}</span>
-                <button className="rcp__ctrl" onClick={() => changeQty(item.id, 1)}>+</button>
-                <button className="rcp__del" onClick={e => changeQty(item.id, -999, e.currentTarget)}>✕</button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
       {cart.length > 0 && (
@@ -702,10 +741,20 @@ function MenuCard({ item, inCart, cartQty, onAdd, onOpen, onCustomize, onChangeQ
     <div className={`mc ${inCart?'mc--in':''}`} onClick={() => onOpen(item)}>
       <div className={`mc__img ${showFlash ? 'mc--adding' : ''}`} ref={imgRef} style={{ backgroundImage:`url('${item.image||''}')` }}>
         {!item.image && <div className="mc__ph">🍽️</div>}
-        {item.is_bestseller && <div className="mc__ribbon mc__ribbon--star">⭐ Best</div>}
-        {item.is_popular    && <div className="mc__ribbon mc__ribbon--hot">🔥 Hot</div>}
-        {item.discount      && <div className="mc__ribbon mc__ribbon--off">{item.discount}% OFF</div>}
-        {vegLabel && <div className={`mc__ribbon ${isVeg ? 'mc__ribbon--veg' : 'mc__ribbon--nonveg'}`}>{isVeg ? '🟢' : '🔴'} {vegLabel}</div>}
+        {/* Top-left: discount badge */}
+        {item.discount > 0 && <span className="mc__badge mc__badge--off">{item.discount}% OFF</span>}
+        {/* Top-right: bestseller/popular */}
+        {(item.is_bestseller || item.is_popular) && (
+          <span className="mc__badge mc__badge--top-right">
+            {item.is_bestseller ? '⭐' : '🔥'}
+          </span>
+        )}
+        {/* Bottom-left: veg/non-veg small dot */}
+        {vegLabel && (
+          <span className={`mc__badge mc__badge--diet ${isVeg ? 'mc__badge--veg' : 'mc__badge--nonveg'}`}>
+            {isVeg ? '🟢' : '🔴'} {vegLabel}
+          </span>
+        )}
         {inCart && <span className="mc__qty-badge">{cartQty}</span>}
         {showFlash && <span className="mc__added-flash">✓</span>}
       </div>
@@ -801,7 +850,7 @@ function CustomizeModal({ item, onClose, onSave }) {
 }
 
 
-function ProfileModal({ userData, onClose, onHistory }) {
+function ProfileModal({ userData, onClose, onHistory, onLogout }) {
   const { t, lang, setLanguage, LANGS } = useLang();
   const name   = userData?.guestName || userData?.guest?.guest_name || 'Guest';
   const room   = userData?.guest?.guestRoomId || userData?.guest?.room || userData?.roomNumber || 'N/A';
@@ -835,6 +884,9 @@ function ProfileModal({ userData, onClose, onHistory }) {
         </div>
         <div className="pm__foot">
           <button className="pm__hist" onClick={onHistory}>📋 {t('order_history')}</button>
+          <button className="pm__logout" onClick={onLogout} style={{width:'100%',marginTop:8,padding:'11px',background:'rgba(239,68,68,0.08)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.2)',borderRadius:10,fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit',transition:'all 150ms'}}>
+            🚪 {t('logout')}
+          </button>
         </div>
       </div>
     </div>
@@ -857,6 +909,7 @@ export default function Menu() {
   const [allergenFilter, setAllergenFilter] = useState([]); // array of allergen ids to EXCLUDE
   const [showAllergenPanel, setShowAllergenPanel] = useState(false);
   const [allAllergens, setAllAllergens] = useState([]); // master list extracted from menu items
+  const [recommendations, setRecommendations] = useState([]); // from recommendations API
   const [categories, setCategories]   = useState([]);
   const [preferences, setPreferences] = useState([]);
   const [activeShift, setActiveShift] = useState(() => localStorage.getItem('selectedShift') || '');
@@ -946,11 +999,19 @@ export default function Menu() {
     setFiltered(items); setPage(1);
   }, [menuItems, category, search, priceF, sortF, vegFilter, allergenFilter]);
 
-  async function loadMenu(shiftId) {
+  async function loadMenu(shiftId, allergenIds) {
     const currentShift = shiftId || localStorage.getItem('selectedShift');
+    const activeAllergens = allergenIds || allergenFilter;
     setLoading(true);
     try {
-      const resp = await authFetch(`${API_BASE}/api/app/outlets/${selOutlet}/categories/${currentShift}/menu?hotel_id=${hotelId}&_t=${Date.now()}`);
+      let menuUrl = `${API_BASE}/api/app/outlets/${selOutlet}/categories/${currentShift}/menu?hotel_id=${hotelId}&_t=${Date.now()}`;
+      // Send allergen exclusion filter to backend
+      if (activeAllergens.length > 0) {
+        const allergenCodes = allAllergens.filter(a => activeAllergens.includes(a.id)).map(a => a.code).join(',');
+        if (allergenCodes) menuUrl += `&exclude_allergens=${allergenCodes}`;
+        menuUrl += `&exclude_allergen_ids=${activeAllergens.join(',')}`;
+      }
+      const resp = await authFetch(menuUrl);
       const data = await resp.json();
       const o = data[Object.keys(data)[0]];
       if (o?.menuItems) {
@@ -962,59 +1023,33 @@ export default function Menu() {
         };
         setOutlet(mergedOutlet);
 
-        // ── Fetch enriched product data (allergens, diet_type, nutrition) from products API ──
-        let enrichedMap = {};
-        try {
-          const prodResp = await authFetch(`${API_BASE}/api/products?outlet_id=${selOutlet}&limit=500`);
-          const prodData = await prodResp.json();
-          const products = prodData?.products || prodData?.data || (Array.isArray(prodData) ? prodData : []);
-          products.forEach(p => {
-            const pid = String(p.external_id || p.id);
-            enrichedMap[pid] = p;
-          });
-        } catch (e) { console.warn('Products enrichment fetch failed:', e.message); }
-
-        // ── Fetch master allergen list ──
-        let masterAllergens = [];
-        try {
-          const allergenResp = await authFetch(`${API_BASE}/api/allergens`);
-          const allergenData = await allergenResp.json();
-          masterAllergens = allergenData?.allergens || allergenData || [];
-        } catch (e) { console.warn('Allergens fetch failed:', e.message); }
-
-        // ── Merge enriched data into menu items ──
+        // ── Menu API already returns allergen_names, diet_type, nutrition — use directly ──
         const enrichedItems = o.menuItems.map(item => {
-          const pid = String(item.id);
-          const enriched = enrichedMap[pid] || {};
-          
-          // Allergens: use enriched allergen_names, or fallback to menu item allergens
-          let allergens = item.allergens || [];
-          if (enriched.allergen_names && Array.isArray(enriched.allergen_names) && enriched.allergen_names.length > 0) {
-            allergens = enriched.allergen_names;
-          } else if (enriched.allergen_ids && Array.isArray(enriched.allergen_ids) && enriched.allergen_ids.length > 0 && masterAllergens.length > 0) {
-            // Map allergen_ids to master allergens
-            allergens = enriched.allergen_ids
-              .map(aid => masterAllergens.find(a => a.id === aid))
-              .filter(Boolean);
-          }
+          // Allergens: use allergen_names from API response directly
+          const allergens = (item.allergen_names && Array.isArray(item.allergen_names) && item.allergen_names.length > 0)
+            ? item.allergen_names
+            : (item.allergens || []);
 
-          // Diet type: use enriched diet_type or veg_nonveg
-          const diet_type = enriched.diet_type || enriched.veg_nonveg || '';
+          // Diet type from API
+          const diet_type = item.diet_type || item.food_type || item.veg_nonveg || '';
 
-          // Nutrition: use enriched real values
+          // Nutrition: use real values from API if present
           const nutrition = {};
-          if (enriched.calories != null)   nutrition.calories = Number(enriched.calories);
-          if (enriched.protein_g != null)  nutrition.protein = `${enriched.protein_g}g`;
-          if (enriched.carbs_g != null)    nutrition.carbs = `${enriched.carbs_g}g`;
-          if (enriched.fat_g != null)      nutrition.fat = `${enriched.fat_g}g`;
-          if (enriched.fiber_g != null)    nutrition.fiber = `${enriched.fiber_g}g`;
-          if (enriched.sodium_mg != null)  nutrition.sodium = `${enriched.sodium_mg}mg`;
-          if (enriched.sugar_g != null)    nutrition.sugar = `${enriched.sugar_g}g`;
+          if (item.calories != null)   nutrition.calories = Number(item.calories);
+          if (item.protein_g != null)  nutrition.protein = `${item.protein_g}g`;
+          if (item.carbs_g != null)    nutrition.carbs = `${item.carbs_g}g`;
+          if (item.fat_g != null)      nutrition.fat = `${item.fat_g}g`;
+          if (item.fiber_g != null)    nutrition.fiber = `${item.fiber_g}g`;
+          if (item.sodium_mg != null)  nutrition.sodium = `${item.sodium_mg}mg`;
+          if (item.sugar_g != null)    nutrition.sugar = `${item.sugar_g}g`;
           const hasRealNutrition = Object.keys(nutrition).length > 0;
 
-          // Discount from offer
-          const offer = enriched.offer ? Number(enriched.offer) : 0;
-          const discount = offer > 0 && item.price > 0 ? Math.round((offer / item.price) * 100) : item.discount;
+          // Discount: calculate from originalPrice vs price
+          const origPrice = Number(item.originalPrice) || 0;
+          const curPrice = Number(item.price) || 0;
+          const discount = (origPrice > curPrice && curPrice > 0)
+            ? Math.round(((origPrice - curPrice) / origPrice) * 100)
+            : null;
 
           return {
             ...item,
@@ -1031,29 +1066,72 @@ export default function Menu() {
 
         setMenuItems(enrichedItems);
         setFiltered(enrichedItems);
-        setCategories([...new Set(enrichedItems.flatMap(i => i.category||[]))]);
-
-        // Extract all unique allergens from enriched items + master list
-        const allergenMap = new Map();
-        // Add from master list first
-        masterAllergens.forEach(a => {
-          if (a?.id) allergenMap.set(a.id, a);
+        const cats = enrichedItems.flatMap(i => {
+          const c = i.category;
+          return Array.isArray(c) ? c : (c ? [c] : []);
         });
-        // Add from items (in case master fetch failed)
+        setCategories([...new Set(cats)]);
+
+        // Extract allergens from items + fetch full master list from API
+        const allergenMap = new Map();
         enrichedItems.forEach(item => {
           (item.allergens||[]).forEach(a => {
             if (a?.id && !allergenMap.has(a.id)) allergenMap.set(a.id, a);
           });
         });
+
+        // Fetch master allergen list from backend
+        try {
+          const allergenResp = await authFetch(`${API_BASE}/api/allergens`);
+          const allergenData = await allergenResp.json();
+          const masterList = allergenData?.allergens || allergenData || [];
+          if (Array.isArray(masterList)) {
+            masterList.forEach(a => {
+              if (a?.id && !allergenMap.has(a.id)) allergenMap.set(a.id, a);
+            });
+          }
+        } catch (e) { console.warn('Master allergens fetch failed:', e.message); }
+
         setAllAllergens([...allergenMap.values()]);
 
         const prefs = storedOutlet?.preferences || o?.preferences || [];
         setPreferences(prefs.filter(p => p.itemCount > 0));
         localStorage.setItem('outlet', JSON.stringify(mergedOutlet));
         setCart(getCartRaw());
+
+        // ── Fetch recommendations from API ──
+        loadRecommendations(enrichedItems);
       }
     } catch(err) { if(err.message.includes('authentication')) { localStorage.clear(); navigate('/preferences'); } }
     finally { setLoading(false); }
+  }
+
+  // ── Recommendations API ──
+  async function loadRecommendations(items) {
+    try {
+      // Pick a random item to get recommendations for, exclude items already in cart
+      const cartIds = getCartRaw().map(c => String(c.id));
+      const firstItem = items[0];
+      if (!firstItem) return;
+      const excludeStr = cartIds.join(',');
+      const catId = localStorage.getItem('selectedShift') || '';
+      const url = `${API_BASE}/api/app/outlets/${selOutlet}/categories/${catId}/products/${firstItem.id}/recommendations?exclude=${excludeStr}&perCategory=5&otherCategories=2`;
+      const resp = await authFetch(url);
+      const data = await resp.json();
+      // Recommendations come as { sameCategory: [...], otherCategories: [...] } or as array
+      let recs = [];
+      if (Array.isArray(data)) recs = data;
+      else if (data?.sameCategory) recs = [...(data.sameCategory||[]), ...(data.otherCategories||[])];
+      else if (data?.recommendations) recs = data.recommendations;
+      else {
+        // Try to extract from nested structure
+        const vals = Object.values(data).filter(v => Array.isArray(v));
+        recs = vals.flat();
+      }
+      if (recs.length > 0) {
+        setRecommendations(recs);
+      }
+    } catch (e) { console.warn('Recommendations fetch failed:', e.message); }
   }
 
   function addToCart(itemId, customization = {}) {
@@ -1077,7 +1155,14 @@ export default function Menu() {
           outlet: selOutlet, outletName: o.name||outlet.name||'',
           pos_id: posId,
           requiresAdvancePayment: item.requiresAdvancePayment || false,
-          taxes: item.taxes
+          taxes: item.taxes,
+          nutrition: item.nutrition || {},
+          allergens: item.allergens || [],
+          diet_type: item.diet_type || item.food_type || '',
+          food_type: item.food_type || item.diet_type || '',
+          category: item.category || '',
+          tags: item.tags || [],
+          description: item.description || '',
         }];
       }
       saveCart(nc);
@@ -1180,7 +1265,7 @@ export default function Menu() {
               <button className="tb-avatar" onClick={() => setShowProfile(true)}>
                 {(userData?.guestName||userData?.guest?.guest_name||'G').charAt(0).toUpperCase()}
               </button>
-              <button className="tb-logout" onClick={() => { localStorage.clear(); navigate('/'); }}>
+              <button className="tb-logout" onClick={() => { localStorage.clear(); navigate('/?logged_out=1'); }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
               </button>
             </div>
@@ -1196,67 +1281,57 @@ export default function Menu() {
           </div>
         </header>
 
-        {/* UNIFIED FILTER BAR — categories + preferences + veg + price + sort */}
+        {/* SIMPLE FILTER BAR — one clean row */}
         <div className="unified-bar">
-          {/* Row 1: Preference tabs (if any) — shown above categories */}
-          {preferences.length > 0 && (
-            <div className="pref-bar">
-              <span className="pref-bar__label">Meal:</span>
-              <div className="pref-bar__tabs">
-                {preferences.map(pref => (
-                  <button key={pref.id}
-                    className={`pref-tab ${String(pref.id)===activeShift?'pref-tab--on':''}`}
-                    onClick={() => { localStorage.setItem('selectedShift', pref.id); setActiveShift(String(pref.id)); loadMenu(pref.id); }}>
-                    {pref.icon && <span className="pref-tab__icon">{pref.icon}</span>}
-                    {pref.title} {pref.itemCount > 0 && <span className="pref-tab__count">({pref.itemCount})</span>}
-                  </button>
-                ))}
-              </div>
+          {/* Meal preferences as scrollable pills (if multiple shifts) */}
+          {preferences.length > 1 && (
+            <div className="filter-row filter-row--meals">
+              {preferences.map(pref => (
+                <button key={pref.id}
+                  className={`flt-pill ${String(pref.id)===activeShift?'flt-pill--on':''}`}
+                  onClick={() => { localStorage.setItem('selectedShift', pref.id); setActiveShift(String(pref.id)); loadMenu(pref.id); }}>
+                  {pref.icon && <span>{pref.icon}</span>}
+                  {pref.title} ({pref.itemCount})
+                </button>
+              ))}
             </div>
           )}
 
-          {/* Row 2: Category tabs */}
-          <div className="cat-strip">
-            <button className={`cat-btn ${category==='all'?'cat-btn--on':''}`} onClick={() => setCategory('all')}>
-              All <span className="cat-count">{menuItems.length}</span>
+          {/* Main filter row: Categories + Veg + Sort + Count */}
+          <div className="filter-row">
+            {/* Category pills */}
+            <button className={`flt-pill ${category==='all'?'flt-pill--on':''}`} onClick={() => setCategory('all')}>
+              All ({menuItems.length})
             </button>
             {categories.map(cat => (
-              <button key={cat} className={`cat-btn ${category===cat?'cat-btn--on':''}`} onClick={() => setCategory(cat)}>
-                {cat} <span className="cat-count">{menuItems.filter(i=>i.category?.includes(cat)).length}</span>
+              <button key={cat} className={`flt-pill ${category===cat?'flt-pill--on':''}`} onClick={() => setCategory(cat)}>
+                {cat} ({menuItems.filter(i=>i.category?.includes(cat)).length})
               </button>
             ))}
-          </div>
 
-          {/* Row 3: Filters */}
-          <div className="filter-bar">
-            <div className="filter-bar__left">
-              {/* Veg / Non-veg filter */}
-              <div className="veg-filter-btns">
-                <button className={`veg-filter-btn ${vegFilter===''?'veg-filter-btn--on':''}`} onClick={() => setVegFilter('')}>All</button>
-                <button className={`veg-filter-btn veg-filter-btn--veg ${vegFilter==='veg'?'veg-filter-btn--on':''}`} onClick={() => setVegFilter(vegFilter==='veg'?'':'veg')}>
-                  🟢 Veg
-                </button>
-                <button className={`veg-filter-btn veg-filter-btn--nonveg ${vegFilter==='nonveg'?'veg-filter-btn--on':''}`} onClick={() => setVegFilter(vegFilter==='nonveg'?'':'nonveg')}>
-                  🔴 Non-Veg
-                </button>
-              </div>
-              <select value={priceF} onChange={e=>setPriceF(e.target.value)} className="flt-sel">
-                <option value="">Price</option>
-                <option value="0-300">{currency}0–300</option>
-                <option value="300-500">{currency}300–500</option>
-                <option value="500-800">{currency}500–800</option>
-                <option value="800+">{currency}800+</option>
-              </select>
-              <select value={sortF} onChange={e=>setSortF(e.target.value)} className="flt-sel">
-                <option value="">Sort</option>
-                <option value="price-low">Price ↑</option>
-                <option value="price-high">Price ↓</option>
-                <option value="popular">Popular</option>
-              </select>
-              {(search||priceF||sortF||category!=='all'||vegFilter||allergenFilter.length>0) && (
-                <button className="flt-clear" onClick={() => { setSearch(''); setPriceF(''); setSortF(''); setCategory('all'); setVegFilter(''); setAllergenFilter([]); }}>✕ Clear</button>
-              )}
-            </div>
+            {/* Divider */}
+            <span className="flt-divider" />
+
+            {/* Veg / Non-veg */}
+            <button className={`flt-pill flt-pill--veg ${vegFilter==='veg'?'flt-pill--on':''}`}
+              onClick={() => setVegFilter(vegFilter==='veg'?'':'veg')}>🟢 Veg</button>
+            <button className={`flt-pill flt-pill--nonveg ${vegFilter==='nonveg'?'flt-pill--on':''}`}
+              onClick={() => setVegFilter(vegFilter==='nonveg'?'':'nonveg')}>🔴 Non-Veg</button>
+
+            {/* Sort */}
+            <select value={sortF} onChange={e=>setSortF(e.target.value)} className="flt-sel">
+              <option value="">Sort</option>
+              <option value="price-low">Price ↑</option>
+              <option value="price-high">Price ↓</option>
+              <option value="popular">Popular</option>
+            </select>
+
+            {/* Clear */}
+            {(search||priceF||sortF||category!=='all'||vegFilter||allergenFilter.length>0) && (
+              <button className="flt-pill flt-pill--clear" onClick={() => { setSearch(''); setPriceF(''); setSortF(''); setCategory('all'); setVegFilter(''); setAllergenFilter([]); }}>✕</button>
+            )}
+
+            {/* Count */}
             <span className="flt-count">{filtered.length} items</span>
           </div>
         </div>
@@ -1318,9 +1393,12 @@ export default function Menu() {
             </>
           )}
 
-          {/* RECOMMENDATIONS — Bestsellers & Popular mixed */}
-          {!loading && category === 'all' && !search && menuItems.length > 0 && (() => {
-            const recs = menuItems.filter(i => i.is_bestseller || i.is_popular || i.isBestseller || i.isPopular);
+          {/* RECOMMENDATIONS — from API or bestsellers fallback */}
+          {!loading && !search && menuItems.length > 0 && (() => {
+            // Use API recommendations if available, else fallback to bestsellers/popular
+            const apiRecs = recommendations.filter(r => !cart.find(c => String(c.id) === String(r.id)));
+            const fallbackRecs = menuItems.filter(i => i.is_bestseller || i.is_popular || i.isBestseller || i.isPopular);
+            const recs = apiRecs.length > 0 ? apiRecs : fallbackRecs;
             if (recs.length === 0) return null;
             return (
               <>
@@ -1437,10 +1515,10 @@ export default function Menu() {
               </div>
             )}
             {allergenFilter.length > 0 && (
-              <button className="flt-clear" style={{ marginBottom: 12 }} onClick={() => setAllergenFilter([])}>✕ Clear All Allergen Filters</button>
+              <button className="flt-clear" style={{ marginBottom: 12 }} onClick={() => { setAllergenFilter([]); loadMenu(null, []); }}>✕ Clear All Allergen Filters</button>
             )}
 
-            <button className="co-btn co-btn--blue" style={{ marginTop:8, width:'100%' }} onClick={() => setShowAllergenPanel(false)}>
+            <button className="co-btn co-btn--blue" style={{ marginTop:8, width:'100%' }} onClick={() => { setShowAllergenPanel(false); loadMenu(null, allergenFilter); }}>
               Done
             </button>
           </div>
@@ -1480,7 +1558,8 @@ export default function Menu() {
 
       {showProfile && (
         <ProfileModal userData={userData} onClose={() => setShowProfile(false)}
-          onHistory={() => { setShowProfile(false); navigate('/history'); }} />
+          onHistory={() => { setShowProfile(false); navigate('/history'); }}
+          onLogout={() => { setShowProfile(false); localStorage.clear(); navigate('/?logged_out=1'); }} />
       )}
 
       {/* ══ MOBILE BOTTOM NAV ══ */}
@@ -1504,11 +1583,11 @@ export default function Menu() {
           </span>
           Orders
         </button>
-        <button className="mbn-item" onClick={() => navigate('/order-status')}>
+        <button className="mbn-item" onClick={() => { const el = document.querySelector('.scroll-area'); const sec = el?.querySelector('.section-hdr:last-of-type'); if(sec) sec.scrollIntoView({behavior:'smooth',block:'start'}); else if(el) el.scrollTo({top:el.scrollHeight,behavior:'smooth'}); }}>
           <span className="mbn-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
           </span>
-          Track
+          Picks
         </button>
         <button className="mbn-item" onClick={() => setShowProfile(true)}>
           <span className="mbn-icon">
@@ -1523,8 +1602,10 @@ export default function Menu() {
       <div className={`mobile-cart-drawer ${mobileCartOpen ? 'open' : ''}`}>
         <div className="mcd-handle"><div className="mcd-handle-bar" /></div>
         <div className="mcd-header">
-          <span className="mcd-title">Your Order</span>
-          {cartCount > 0 && <span className="mcd-badge">{cartCount} items</span>}
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span className="mcd-title">Your Order</span>
+            {cartCount > 0 && <span className="mcd-badge">{cartCount} items</span>}
+          </div>
           <button className="mcd-close" onClick={() => setMobileCartOpen(false)}>✕</button>
         </div>
         <div className="mcd-items">
@@ -1535,12 +1616,36 @@ export default function Menu() {
               <small style={{color:'var(--txt3)',fontSize:12}}>Add something delicious!</small>
             </div>
           ) : (
-            cart.map(item => (
+            cart.map(item => {
+              const dietType = (item.food_type||item.diet_type||'').toLowerCase();
+              const isVeg = dietType === 'veg' || dietType === 'vegetarian';
+              const isNonVeg = dietType === 'nonveg' || dietType === 'non-veg';
+              return (
               <div key={item.id} className="mcd-item">
-                <div className="mcd-item-img" style={{ backgroundImage: `url('${item.image||''}')` }} />
+                <div className="mcd-item-img" style={{ backgroundImage: `url('${item.image||''}')` }}>
+                  {(isVeg || isNonVeg) && (
+                    <span className="mcd-diet">{isVeg ? '🟢' : '🔴'}</span>
+                  )}
+                </div>
                 <div className="mcd-item-info">
                   <div className="mcd-item-name">{item.name}</div>
-                  <div className="mcd-item-price">{currency} {item.price}</div>
+                  {/* Nutrition row */}
+                  {item.nutrition && (
+                    <div className="mcd-item-nutri">
+                      {item.nutrition.protein && <span>💪{item.nutrition.protein}</span>}
+                      {item.nutrition.carbs && <span>🍞{item.nutrition.carbs}</span>}
+                      {item.nutrition.fat && <span>🥑{item.nutrition.fat}</span>}
+                    </div>
+                  )}
+                  {/* Allergens */}
+                  {item.allergens?.length > 0 && (
+                    <div className="mcd-item-allergens">
+                      {item.allergens.slice(0,4).map(a => (
+                        <span key={a.id} className="mcd-allergen" style={{background:a.color||'#ef4444'}}>{a.icon}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mcd-item-price">{currency} {item.price}{item.quantity > 1 ? ` × ${item.quantity} = ${currency} ${item.price * item.quantity}` : ''}</div>
                 </div>
                 <div className="mcd-item-controls">
                   <button className="mcd-ctrl" onClick={e => changeMobileQty(item.id, -1, e.currentTarget)}>−</button>
@@ -1549,7 +1654,8 @@ export default function Menu() {
                   <button className="mcd-del" onClick={e => changeMobileQty(item.id, -999, e.currentTarget)}>✕</button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
         {cart.length > 0 && (

@@ -60,7 +60,8 @@ export default function History() {
   }
 
   useEffect(() => {
-    const parsed = safeParse(localStorage.getItem('orderHistory'), []);
+    const raw = safeParse(localStorage.getItem('orderHistory'), []);
+    const parsed = Array.isArray(raw) ? raw : [];
     parsed.sort((a,b) => (Date.parse(b?.timestamp||'')||0) - (Date.parse(a?.timestamp||'')||0));
     setOrders(parsed);
   }, []);

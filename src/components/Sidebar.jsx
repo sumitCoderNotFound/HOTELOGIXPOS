@@ -57,7 +57,7 @@ export default function Sidebar({ open, onClose }) {
     navigate(path); onClose();
   }
 
-  function handleLogout() { localStorage.clear(); onClose(); navigate('/'); }
+  function handleLogout() { localStorage.clear(); onClose(); navigate('/?logged_out=1'); }
 
   return (
     <>
